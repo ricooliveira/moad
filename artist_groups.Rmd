@@ -1,0 +1,309 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(gridExtra)
+library(cluster)
+library(readr)
+library(data.table)
+library(dplyr)
+library(stringr)
+library(wordVectors)
+library(lsa)
+library(stats)
+library(ggbiplot)
+library(pbapply)
+library(moments)
+```
+
+```{r}
+
+rewrite.lfm <- function(u){
+  Iu = filter(LFM, userid == u)
+  return(as.vector(t(Iu$artistname)))
+}
+
+centroid_by_user = function(id, we_model){
+  listG = filter(LFM, userid == id) 
+  x = unique(listG$artistname) %>% length()
+  
+  matrix_names = attr(we_model@.Data, "dimnames")[[1]] %>% as.data.frame()
+  matrix_names = cbind(matrix_names,as.data.frame(c(1:nrow(matrix_names))))
+  names(matrix_names) = c("artistname","pos")
+  
+  we_pos = inner_join(matrix_names, listG) %>% select(pos)
+  
+  wes = we_model@.Data[we_pos$pos,]
+  if(!is.vector(wes)){
+    wes = wes %>% colMeans()  
+  }
+  return(wes)
+}
+
+list.artists.locality = function(l){
+  listL = filter(artists.by.locality, locality == l)
+  return(as.vector(listL$artistname))
+}
+
+decade <- function(year){
+   return (floor(year / 10) * 10)
+}
+
+artist.decades = function(a){
+  artist = filter(artist.metadata, artistname == a)
+  return(data.frame(artistname = a, decade = seq(artist$debut, artist$last, by = 10)))
+}
+
+list.artists.contemporaneity = function(c, artists.by.contemporaneity){
+  listL = filter(artists.by.contemporaneity, decade == c)
+  return(as.vector(listL$artistname))
+}
+
+centroid_by_aspect = function(g, we_model, artists.by.aspect, aspect){
+  
+  listG = artists.by.aspect[artists.by.aspect[,aspect] == g,]
+  
+  matrix_names = attr(we_model@.Data, "dimnames")[[1]]
+  we_pos = which(matrix_names %in% listG$artistname)
+  wes = we_model@.Data[we_pos,]
+  if(!is.vector(wes)){
+    wes = wes %>% colMeans()  
+  }
+  return(wes)
+}
+
+cosine_similarity = function(aspect_value, user){
+  cosine(user, aspect_value)
+}
+
+# normalize user vectors before k-means
+normalize.user.vector = function(user.vector){
+  # the vector is decreasingly ordered 
+  greater = user.vector[1]
+  return(user.vector/as.numeric(greater))
+}
+
+user_weight = function(centroids_by_user, centroids_by_aspect){
+  user_subaspects_weights = sapply(centroids_by_aspect, cosine_similarity, centroids_by_user) %>% sort(decreasing = T) %>% data_frame()
+}
+
+user_weights = function(centroids_by_aspect){
+  #centroids_by_aspect = centroids_by_contemporaneity
+  user_weights_aspect = lapply(centroids_by_user, user_weight, centroids_by_aspect) %>% bind_cols()
+  #user_weights_aspect = apply(user_weights_aspect, 2, normalize.user.vector)
+  user_weights_aspect = user_weights_aspect %>% as.data.frame() %>% t() %>% as.data.frame()
+  rownames(user_weights_aspect) = 1:nrow(user_weights_aspect)
+  # normalizar user_weights_aspect
+  user_weights_aspect = apply(user_weights_aspect,1,normalize.user.vector) %>% as.data.frame() %>% t() %>% as.data.frame()
+  list(weights = user_weights_aspect, k = kmeans(user_weights_aspect, 2))
+}
+
+pca_graphic = function(cluster_weights){
+  
+  user_weights_pca = prcomp(cluster_weights$weights, center = T, scale. = T)
+
+  g <- ggbiplot(user_weights_pca, obs.scale = 1, var.scale = 0, scale = F,
+              groups = as.character(cluster_weights$k$cluster), ellipse = F, var.axes = F,
+              circle = F, circle.prob = F)
+
+  g <- g + theme(legend.direction = 'horizontal', 
+               legend.position = 'top')
+  return(g)
+}
+
+silhouette_calc <- function(clusters){
+  D = daisy(clusters$weights)
+  sil = silhouette(clusters$k$cluster, D)
+
+  sil = sil %>% as.data.frame.matrix()
+  sil %>% group_by(cluster, neighbor) %>% summarise(sil = mean(sil_width))
+}
+
+```
+
+```{r}
+# Data Load
+artist.metadata = fread("data/artist.data.txt", 
+                        sep = ";", 
+                        na.strings = "")
+names(artist.metadata)[2] = "artistname"
+artist.metadata$artistname = str_replace_all(artist.metadata$artistname, " ", "_")
+
+# Correct data 
+artist.metadata[which(artist.metadata$artistname == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.metadata[which(artist.metadata$artistname == "Rod_Stewart"),"debut"] = 1968
+
+# Convert years to decades
+artist.metadata[,"debut"] = decade(artist.metadata[,"debut"])
+artist.metadata[,"last"] = decade(artist.metadata[,"last"])
+
+LFM <- fread("data/LFM.artists.available.txt",
+             sep = "\t",
+             na.strings = "")
+LFM = as.data.frame(LFM)
+names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
+LFM$artistname = str_replace_all(LFM$artistname, " ", "_")
+
+total.plays = LFM %>% group_by(artistname) %>% count("artistname")
+artists.min5 = filter(total.plays, freq >= 5) %>% select(artistname)
+
+artist.metadata = inner_join(artist.metadata, artists.min5)
+LFM = inner_join(LFM, artists.min5)
+
+model = read.binary.vectors("data/artistas_embeddings.bin")
+
+artist.metadata = artist.metadata[artist.metadata$artistname %in% attr(model@.Data, "dimnames")[[1]],]
+```
+
+```{r, warning=F}
+# User groups
+LFM = LFM[order(LFM$userid, LFM$timestamp),]
+users = unique(LFM$userid)
+#LFM$artistname = str_replace_all(LFM$artistname, " ", "_")
+centroids_by_user = lapply(users, centroid_by_user, model)
+```
+
+```{r}
+# Genre group
+melt.artists = melt(artist.metadata, id.vars = c("artistname"), measure.vars = c(7:ncol(artist.metadata)))
+artists.by.genre = select(filter(melt.artists, value == 1), c(artistname,variable))
+names(artists.by.genre) = c("artistname", "genre")
+artists.by.genre$artistname = str_replace_all(artists.by.genre$artistname, " ", "_")
+
+genres = unique(artists.by.genre$genre)
+centroids_by_genre = pblapply(genres, centroid_by_aspect, model, artists.by.genre, "genre")
+```
+
+```{r}
+#localities group
+localities = as.list(unique(artist.metadata$area))
+artists.by.locality = select(artist.metadata, c(artistname, area))
+names(artists.by.locality) = c("artistname", "locality")
+
+centroids_by_locality = pblapply(localities, centroid_by_aspect, model, artists.by.locality, "locality")
+```
+
+```{r}
+# Contemporaneity group
+
+# list.artists.by.contemporaneity = pblapply(artist.metadata$artistname, artist.decades)
+# artists.by.contemporaneity = bind_rows(list.artists.by.contemporaneity)
+# write_csv(artists.by.contemporaneity, "data/artists_by_contemporaneity.csv")
+artists.by.contemporaneity = read_csv("data/artists_by_contemporaneity.csv")
+
+decades = unique(artists.by.contemporaneity$decade)
+centroids_by_contemporaneity = pblapply(decades, centroid_by_aspect, model, artists.by.contemporaneity, "decade")
+```
+
+```{r}
+cluster_contemporaneity = user_weights(centroids_by_contemporaneity)
+cluster_locality = user_weights(centroids_by_locality)
+cluster_genre = user_weights(centroids_by_genre)
+
+cluster_contemporaneity$k$centers
+```
+
+```{r}
+contemporaneity_pca = pca_graphic(cluster_contemporaneity)
+ggsave("contemporaneity_pca.pdf", contemporaneity_pca)
+
+genre_pca = pca_graphic(cluster_genre)
+ggsave("genre_pca.pdf", genre_pca)
+
+locality_pca = pca_graphic(cluster_locality)
+ggsave("locality_pca.pdf", locality_pca)
+```
+
+```{r}
+sil_contemporaneity = silhouette_calc(cluster_contemporaneity)
+sil_genre = silhouette_calc(cluster_genre)
+sil_locality = silhouette_calc(cluster_locality)
+```
+
+```{r}
+create_points = function(propensities, aspect){
+  points = 1:nrow(propensities) %>% as.numeric()
+  
+  propensities_1 = data_frame(propensity = propensities$`1`, type = "Diverse")
+  #propensities_2 = data_frame(propensity = propensities$`2`, type = "Neutral")
+  propensities_2 = data_frame(propensity = propensities$`2`, type = "Conservative")
+  
+  propensities = bind_rows(propensities_1, propensities_2) #, propensities_3)
+  
+  propensities$points = points
+  propensities$aspect = aspect
+  return(propensities)
+}
+
+contemporaneity_centers = cluster_contemporaneity$k$centers %>% t() %>% as_data_frame()
+contemporaneity_points = create_points(contemporaneity_centers, "Contemporaneity")
+
+locality_centers = cluster_locality$k$centers %>% t() %>% as_data_frame()
+#colnames(locality_centers) = c("2", "1")
+locality_points = create_points(locality_centers, "Locality")
+
+genre_centers = cluster_genre$k$centers %>% t() %>% as_data_frame()
+genre_points = create_points(genre_centers, "Genre")
+
+points = bind_rows(contemporaneity_points, locality_points, genre_points)
+
+f <- ggplot(points, aes(points, propensity, group = type, color = type)) + geom_point() +
+    facet_grid(. ~ aspect, scales = "free") + theme_bw() + theme(legend.position = "bottom")
+f
+ggsave("clusters.pdf",f, width = 12, height = 4)
+```
+
+```{r}
+user.propensity = cbind(users, cluster_contemporaneity$k$cluster, cluster_locality$k$cluster, cluster_genre$k$cluster) %>% as.data.frame()
+names(user.propensity) = c("users", "contemporaneity", "locality", "genre")
+user.propensity$contemporaneity = user.propensity$contemporaneity %>% as.character() %>% as.integer()
+user.propensity$locality = user.propensity$locality %>% as.character() %>% as.integer()
+user.propensity$genre = user.propensity$genre %>% as.character() %>% as.integer()
+
+#user.propensity$contemporaneity = user.propensity$contemporaneity - 1
+#user.propensity[which(user.propensity$locality == 2),"locality"] = 0
+#user.propensity$genre = user.propensity$genre - 2
+user.propensity[which(user.propensity$contemporaneity == 1),"contemporaneity"] = 1
+user.propensity[which(user.propensity$contemporaneity == 2),"contemporaneity"] = 0
+#user.propensity[which(user.propensity$contemporaneity == 3),"contemporaneity"] = 2
+user.propensity[which(user.propensity$locality == 1),"locality"] = 0
+user.propensity[which(user.propensity$locality == 2),"locality"] = 1
+#user.propensity[which(user.propensity$locality == 3),"locality"] = 2
+user.propensity[which(user.propensity$genre == 1),"genre"] = 1
+user.propensity[which(user.propensity$genre == 2),"genre"] = 0
+#user.propensity[which(user.propensity$genre == 3),"genre"] = 1
+
+fwrite(user.propensity,
+       "data/user.propensity.word2vec.txt",
+       row.names = FALSE, col.names = TRUE,
+       sep = "\t")
+
+#user.propensity = user.propensity %>% filter(contemporaneity != 2 & locality != 2 & genre!= 2)
+
+# user.propensity = user.propensity %>% filter(contemporaneity == 0)
+# user.propensity = user.propensity %>% filter(contemporaneity == 1 & locality == 1 & genre == 1)
+# prov = merge(user.propensity, nsga_scenario8, by.x = "users", by.y = "X1") %>% select(users,X2)
+# prov$users = as.character(prov$users)
+# fwrite(prov,
+#        "data/prov.txt",
+#        row.names = FALSE, col.names = F,
+#        sep = ",",
+#        quote = T)
+
+
+users.by.scenario = group_by(user.propensity, contemporaneity, locality, genre)
+users.scenarios = dplyr::summarise(users.by.scenario, total = n())
+scenarios.label = as.data.frame(as.character(c(1:8)))
+names(scenarios.label) = "scenario"
+
+users.scenarios = as.data.frame(users.scenarios)
+users.scenarios = cbind(users.scenarios, scenarios.label)
+
+barplot.scenarios = ggplot(users.scenarios, aes(x = scenario, y = total)) +
+                      geom_bar(stat="identity") + 
+                      theme_bw()
+ggsave("barplot.scenarios.w2v.pdf", barplot.scenarios)#, width = 12, height = 4)
+barplot.scenarios
+```

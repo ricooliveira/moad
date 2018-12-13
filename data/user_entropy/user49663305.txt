@@ -1,0 +1,4 @@
+timestamps	entropy	aspect
+15477	1.79175250485716	contemporaneity
+15477	1.69784957330536	locality
+15477	2.53259116080112	genre

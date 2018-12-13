@@ -1,0 +1,101 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(readr)
+library(data.table)
+library(dplyr)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+```{r}
+artist.data <- fread("/local/Scripts/word2vec/MOAD/data/artist.data.txt", 
+                     sep = ";", 
+                     verbose = TRUE,
+                     header = TRUE)
+artist.data = as.data.frame(artist.data)
+
+# Correcting debut year from Rod Stewart - wrong in MusicBrainz
+
+artist.data[which(artist.data$Artist == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.data[which(artist.data$Artist == "Rod_Stewart"),"debut"] = 1968
+
+# Input 0 in NA values
+
+col = c(3:6)
+for(i in col){
+  artist.data[which(is.na(artist.data[,i])),i] = 0
+}
+
+data.train <- fread("/local/datasets/experimento/LFM_train.txt", 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+data.train = data.train[,c(2, 3, 10)]
+names(data.train) = c("artistid", "userid", "artistname")
+
+users = data.train$userid %>% unique()
+
+sorteio = c(25, 111, 114, 131, 168, 173, 293, 294)
+users.sorteados = users[sorteio]
+subset.train = filter(data.train, userid %in% users.sorteados)
+
+```
+
+```{r}
+# GENRE
+
+genre.histogram = function(user, data, artist.data){
+  # data = subset.train
+  # user = users.sorteados[2]
+  
+  user.history = filter(data, userid == user)
+  user.history = user.history$artistname %>% unique()
+  history.join = filter(artist.data, Artist %in% user.history)
+  history.join = history.join[, c(7:ncol(history.join))] 
+  history.join.t = t(history.join) 
+  a = history.join %>% colSums() %>% data_frame()
+  a$genre = colnames(history.join)
+  colnames(a) = c("count", "genre")
+  a = a[order(-a$count),] %>% filter(count != 0)
+
+  f = ggplot(data=a, aes(x=reorder(genre, -count), y=count)) +
+    geom_bar(stat="identity")
+  ggsave(paste0("genre-",user,".pdf"))
+  return(f)
+}
+
+```
+
+```{r}
+# LOCALITY
+
+locality.histogram = function(user, data, artist.data){
+   # data = subset.train
+   # user = users.sorteados[5]
+
+  user.history = filter(data, userid == user)
+  user.history = user.history$artistname %>% unique()
+  history.join = filter(artist.data, Artist %in% user.history)
+  history.join = history.join[, 4] 
+  qplot(history.join, geom = "histogram", alpha=I(.2), col=I("red"), fill=I("blue"))
+  ggsave(paste0("locality",user,".pdf"))
+}
+```
+
+```{r}
+
+genre.histogram(users.sorteados[8], subset.train, artist.data)
+
+locality.histogram(users.sorteados[5], subset.train, artist.data)
+
+
+
+
+```
+

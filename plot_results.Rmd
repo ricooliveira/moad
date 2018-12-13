@@ -1,0 +1,73 @@
+---
+title: "plot_resultados"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require(dplyr)
+require(readr)
+library(ggplot2)
+library(reshape2)
+
+setwd("/local/Scripts/word2vec/MOAD")
+```
+
+```{r}
+#word2vec
+w2v_resultados = read_csv(
+  "/local/Scripts/word2vec/MOAD/data/objectives.sample1000.nsga.user.propensity.word2vec.diffentropy.gaussian.txt.top10.pop10.gen20.txt", 
+  col_names = F)
+w2v_resultados = select(w2v_resultados, users = X1, diversity = X2, affinity = X3, scenario = X4)
+w2v_resultados$metodo = "w2v gaussian"
+
+#entropia
+entropia_resultados = read_csv("/local/datasets/experimento/results_word2vec/objectives.sample1000.nsga.fixed.top10.pop10.gen20.allscenarios.txt", col_names = F)
+entropia_resultados = select(entropia_resultados, users = X1, diversity = X2, affinity = X3, scenario = X4)
+entropia_resultados$metodo = "all users"
+
+```
+
+```{r}
+resultados_por_cenario = bind_rows(entropia_resultados, w2v_resultados)
+resultados_por_cenario_melt1 = melt(resultados_por_cenario, id.vars = c("users","metodo","scenario"), measure.vars = c("diversity"))
+resultados_por_cenario_melt2 = melt(resultados_por_cenario, id.vars = c("users","metodo","scenario"), measure.vars = c("affinity"))
+resultados_por_cenario_melt = rbind(resultados_por_cenario_melt1,resultados_por_cenario_melt2)
+```
+
+```{r}
+cenarios = resultados_por_cenario$scenario %>% unique() %>% sort()
+
+f <- ggplot(resultados_por_cenario_melt, aes(metodo, value, group = metodo, color = metodo)) + geom_boxplot() + 
+  facet_grid(variable ~ scenario) + theme_bw() + theme(legend.position = "bottom", axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+f
+
+ggsave("data/resultados_allusers_x_w2vgaussian10.pdf", f)
+
+
+```
+
+
+```{r}
+
+    filtered_results = filter(resultados_por_cenario, scenario == 6)
+    data1 = filter(filtered_results, metodo == "w2v gaussian")$diversity
+    normal.data1 = shapiro.test(data1)
+    data2 = filter(filtered_results, metodo == "all users")$diversity
+    normal.data2 = shapiro.test(data2)
+    if(normal.data1$p.value >= 0.05 & normal.data2$p.value >= 0.05){
+      sig.diversity = t.test(data1, data2)
+    } else {
+      sig.diversity = wilcox.test(data1, data2, alternative = "g")
+    }
+    data1 = filter(filtered_results, metodo == "w2v gaussian")$affinity
+    normal.data1 = shapiro.test(data1)
+    data2 = filter(filtered_results, metodo == "all users")$affinity
+    normal.data2 = shapiro.test(data2)
+    if(normal.data1$p.value >= 0.05 & normal.data2$p.value >= 0.05){
+      sig.affinity = t.test(data1, data2)
+    } else {
+      sig.affinity = wilcox.test(data1, data2, alternative = "g")
+    }  
+    c(sig.diversity$p.value < 0.05, sig.affinity$p.value < 0.05)
+
+```

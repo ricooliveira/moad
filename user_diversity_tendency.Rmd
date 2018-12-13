@@ -1,0 +1,49 @@
+---
+title: "user_divesity_tendecy"
+author: "Allan Sales"
+date: "11 de abril de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("dist_pair_of_words.R")
+```
+
+# Simulate 
+```{r pressure, echo=FALSE, warning=F}
+model = read.binary.vectors("data/artistas_embeddings.bin")
+pairs_similarities = create_aspect_pairs(model@.Data)
+```
+
+```{r}
+user_1 = c("Tom_Zé", "O_Rappa", "Paulinho_Moska", "Cartola")
+user_2 = c("Marcelo_D2", "Paulinho_Moska", "O_Rappa", "Cidade_Negra")
+
+subaspect_1 = c("Marcelo_D2", "Paulinho_Moska", "Cartola")
+subaspect_2 = c("Tom_Zé", "O_Rappa", "Cidade_Negra", "Natiruts")
+
+# Teste Ricardo
+u1 = artist.vectors.by.user[[1]]
+u2 = artist.vectors.by.user[[2]]
+
+subaspect_1 = artist.vectors.by.genre[[1]]
+subaspect_2 = artist.vectors.by.genre[[2]]
+#
+
+list_of_users = list(u2)
+list_of_subaspects = list(subaspect_2)
+```
+
+```{r, warning=F}
+
+ptm <- proc.time()
+users_similarities_to_subaspects(list_of_users, list_of_subaspects, pairs_similarities)
+proc.time() - ptm
+
+```
+
+```{r}
+
+```
+

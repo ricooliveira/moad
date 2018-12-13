@@ -1,0 +1,65 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("readr")
+library("wordVectors")
+library("rword2vec")
+
+```
+
+```{r}
+cria_word_embedding <- function(tema, texto, path_saida, window_size, n_layers = 300){
+  print(window_size)
+  train_file = paste(path_saida,tema,".csv",sep="")
+  binary_file = paste(path_saida,tema,".bin",sep="")
+  texto %>% write.table(train_file, row.names = F, fileEncoding = "UTF-8", quote = F, col.names = F, sep = " ")
+  
+  modelo = train_word2vec(train_file, threads = 8, vectors = n_layers, window = window_size) # Maximal 63489
+  
+  file.remove(train_file)
+  ### Cria tsv com embedding
+  #path_modelo_tsv = paste(path_saida,tema,".tsv",sep="")
+  #modelo@.Data %>% as.data.frame() %>% write_tsv(path_modelo_tsv)
+  
+  #path_modelo_names_tsv = paste(path_saida,tema,"_names",".tsv",sep="")
+  #modelo@.Data %>% rownames() %>% as.data.frame() %>% write_tsv(path_modelo_names_tsv)
+  
+  return(modelo)
+}
+```
+
+```{r, warning=F}
+path = "data/"
+
+LFM <- fread(paste0(address,"data/LFM-treated.txt"),
+             sep = ";",
+             verbose = TRUE,
+             na.strings = "")
+LFM = as.data.frame(LFM)
+LFM.unique = unique(LFM[,c("userid","artistname")])
+LFM.by.userid = group_by(LFM.unique,userid) %>% summarise(total = n())
+
+window_size = max(LFM.by.userid$total)
+
+ptm <- proc.time()
+texto = read_delim("data/LFM.byUser.txt", delim = ";", col_names = F)
+modelo = cria_word_embedding("artistas_embeddings", texto, path, window_size)
+time.elapsed = proc.time() - ptm
+time.elapsed
+
+```
+
+```{r}
+# cosineSimilarity(modelo, modelo[["Pearl_Jam"]])
+
+dist = distance(file_name = "data/artistas_embeddings.bin", search_word = "Zeca_Pagodinho",num = 20)
+
+dist
+# 
+# word_analogy(file_name = "data/artistas_embeddings.bin", search_words = "Pink_Floyd The_Beatles Mercedes_Sosa", num = 20)
+
+```
+

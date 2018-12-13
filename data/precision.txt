@@ -1,0 +1,9 @@
+user.propensity.entropy	362
+user.propensity.entropy.daily	387
+user.propensity.word2vec	412
+user.propensity.word2vec.wmd	411
+user.propensity.word2vec.diffentropy.gaussian	409
+user.propensity.word2vec.diffentropy.gaussian.half	409
+user.propensity.word2vec.diffentropy.gaussian.10	426
+user.propensity.word2vec.diffentropy.gaussian.oneday	347
+user.propensity.word2vec.diffentropy.daily.gaussian.txt	374
