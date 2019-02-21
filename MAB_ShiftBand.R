@@ -7,10 +7,18 @@ if (!require("data.table")) {
 if (!require("nsga2R")) {
   install.packages("nsga2R", repos="http://cran.rstudio.com/") 
 }
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
+if (!require("lsa")) {
+  install.packages("lsa", repos="http://cran.rstudio.com/") 
+}
 
 library(dplyr)
 library(data.table)
 library(nsga2R)
+library(reshape)
+library(lsa)
 
 ########################## CONSTANTS ##########################
 
@@ -21,6 +29,17 @@ ETA = 0.1
 K = 8 # Number of scenarios
 TRIALS = 10 
 S = 5 # Number of days in user history
+
+TOPN = 10
+TOPN_RERANK = 50
+address <- "/local/datasets/"
+
+# aspects setup
+# aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
+#for(aspect.index in 1:4){
+aspects.all = c(1,2,3)
+aspects.not.to.diversify = c(3)
+aspects.to.diversify = setdiff(aspects.all,aspects.not.to.diversify)
 
 ########################################## Metric Functions ##########################################
 
@@ -63,7 +82,11 @@ similarity.function.contemporaneity = function(data){
     uc = max(a_data$debut, b_data$debut)
     pt = min(a_data$last, b_data$last)
     
-    sim = (pt - uc)/(ut - pc)
+    if(ut-pc == 0){
+      sim = 1
+    } else {
+      sim = (pt - uc)/(ut - pc)  
+    }
     return((sim+1)/2)
   }
   
@@ -71,7 +94,7 @@ similarity.function.contemporaneity = function(data){
   artist_simi$sim = sim
   artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
   artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
-  artist_simi = bind_rows(artist_simi, artist_simi_replicated, artists_identity)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
   
   matrix = artist_simi %>% cast(V1~V2, mean) %>% 
     select(-V1)
@@ -635,19 +658,26 @@ distance.functions[[3]] <- distance.function.genre
 
 ########################### NSGA - MOAD ##################################
 
-moad = function(user){
+set.user.for.moad = function(user, artist.data.listenned, artist.data.new, days.history, days.history.unique){
   N = nrow(artist.data)
   artist.data.listenned = unique(data.train[which(data.train$`user-id` == user),]$`artist-name`)
   artist.data.new = artist.data[-which(artist.data$Artist %in% artist.data.listenned),]
-  ubcf.index = which(artist.data.new$Artist %in% ubcf.top10[which(ubcf.top10$user == u),"artist"])
-  td.index = which(artist.data.new$Artist %in% as.data.frame(td.top10[which(td.top10$user == u),"artist"])[1:10,]) #adapted for eliminate duplicated recommendation
+  #ubcf.index = which(artist.data.new$Artist %in% ubcf.top10[which(ubcf.top10$user == user),"artist"])
+  #td.index = which(artist.data.new$Artist %in% as.data.frame(td.top10[which(td.top10$user == user),"artist"])[1:10,]) # adapted to eliminate duplicated recommendation
   
+  days.history = data.train[which(data.train$`user-id` == user),]
+  days.history$timestamp = days.history$timestamp / (60*60*24) # timestamp in seconds switched to days
+  days.history.unique = days.history$timestamp %>% floor() %>% unique()
+}
+
+
+
+
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   
-  results <- nsga2R.altered(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
+  results <- nsga2R.altered.random(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
                             upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
-                            generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10,
-                            ubcf.index, td.index)
+                            generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
   
   nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
   best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
@@ -662,7 +692,7 @@ moad = function(user){
   fwrite(df,
          paste0(address,"experimento/resultados_novos/sample1000.nsga.top10.div34.pop10.gen20-exec",args[1],".txt"), #replace unique for args[1] when parallelizing
          col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
-}
+
 
 ########################### ShiftBand ##################################
 
@@ -685,14 +715,14 @@ set.weights = function(i){
   w[i] = w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S)))) # S = number of days
 }
 
+set.aspects = function(scenario){
+  if(scenario <= 4)
+}
+
 w = rep(1,K)
 
 W = sum(w)
 p = lapply(c(1:K), set.probability) %>% as.numeric()
-
-# WRONG!
-#it = which(p == max(p))
-#it = it[sample(1:length(it), 1)]
 
 it = random.probability.sort(w)
 
