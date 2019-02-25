@@ -82,11 +82,10 @@ similarity.function.contemporaneity = function(data){
     uc = max(a_data$debut, b_data$debut)
     pt = min(a_data$last, b_data$last)
     
-    if(ut-pc == 0){
-      sim = 1
-    } else {
-      sim = (pt - uc)/(ut - pc)  
-    }
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
     return((sim+1)/2)
   }
   
@@ -119,7 +118,7 @@ ILD = function(data, similarity.function){
 # Distance List History Metric (DLH)
 
 distance.function.genre = function(data, history){
-  centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
+  centroid = genre.centroids[which(genre.centroids$`user-id` == user),]
   centroid$`user-id` = NULL
   distance = 0
   for(i in 1:nrow(data)){
@@ -147,8 +146,8 @@ distance.function.contemporaneity = function(data, history){
   
   n = nrow(data)
   m = nrow(history)
-  data$index = c(1:nrow(n))
-  history$index = c(1:nrow(m))
+  data$index = c(1:n)
+  history$index = c(1:m)
   # artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
   
   sim_between_artists_history = function(x, data, history){
@@ -162,6 +161,9 @@ distance.function.contemporaneity = function(data, history){
     
     uc = max(a_data$debut, b_history$debut)
     pt = min(a_data$last, b_history$last)
+    
+    if (ut == pc)
+      return(1)
     
     sim = (pt - uc)/(ut - pc)
     
@@ -656,9 +658,35 @@ names(distance.functions) <- c("Contemporaneity", "Locality", "Genre")
 distance.functions[[1]] <- distance.function.contemporaneity; distance.functions[[2]] <- distance.function.locality
 distance.functions[[3]] <- distance.function.genre
 
-########################### NSGA - MOAD ##################################
+########################### NSGA - MOAD + ShiftBand ##################################
 
-set.user.for.moad = function(user, artist.data.listenned, artist.data.new, days.history, days.history.unique){
+moad = function(user){
+
+  # user = 7687
+  
+  random.probability.sort = function(w){
+    total = sum(w)
+    target = runif(1, 0, total)
+    i = 1
+    while(total - w[i] > target){
+      total = total - w[i]
+      i = i + 1
+    }
+    return(i)
+  }
+  
+  set.probability = function(i){
+    return((1 - GAMMA) * w[i] / W + GAMMA / K)
+  }
+  
+  set.weights = function(i){
+    w[i] = w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S)))) # S = number of days
+  }
+  
+  # setup ShiftBand
+  w = rep(1,K)
+  
+  #setup moad
   N = nrow(artist.data)
   artist.data.listenned = unique(data.train[which(data.train$`user-id` == user),]$`artist-name`)
   artist.data.new = artist.data[-which(artist.data$Artist %in% artist.data.listenned),]
@@ -667,17 +695,57 @@ set.user.for.moad = function(user, artist.data.listenned, artist.data.new, days.
   
   days.history = data.train[which(data.train$`user-id` == user),]
   days.history$timestamp = days.history$timestamp / (60*60*24) # timestamp in seconds switched to days
-  days.history.unique = days.history$timestamp %>% floor() %>% unique()
+  days.history$timestamp = floor(days.history$timestamp)
+  days.history.unique = days.history$timestamp %>% unique()
+  
+  for (t in days.history.unique) {
+  
+    # t = days.history.unique[1]
+    
+    artist.data.listenned.dayt = days.history[days.history$timestamp == t,]
+    data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned.dayt$`artist-name`,]  
+    
+    # repeat for the user
+    W = sum(w)
+    p = lapply(c(1:K), set.probability) %>% as.numeric()
+    
+    scenario = random.probability.sort(w) # selects scenarios considering ShiftBand probabilities
+    
+    # determine aspects to diversify or not depending on the scenario selection
+    aspects.all = c(1,2,3)
+    aspects.to.diversify = c()
+    if(scenario >= 4){
+      aspects.to.diversify = c(aspects.to.diversify,1)
+    }
+    if(scenario %% 2 == 0){
+      aspects.to.diversify = c(aspects.to.diversify,3)
+    }
+    if(scenario == 3 | scenario == 4 | scenario == 7 | scenario == 8){
+      aspects.to.diversify = c(aspects.to.diversify,2)
+    }
+    aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
+    
+    # Run NSGA to collect reward <<<<=========================================================================================  PAU AQUI
+    results <- nsga2R.altered.random(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
+                                     upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
+                                     generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
+    
+    # Ending the ShiftBand algorithm
+    x.exp = rep(0,K)
+    x.exp[it] = xit / p[it]
+    
+    w = lapply(c(1:K), set.weights) %>% as.numeric()
+    
+  }
+
 }
 
 
 
 
-  data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   
-  results <- nsga2R.altered.random(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
-                            upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
-                            generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
+  
+  
   
   nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
   best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
@@ -694,42 +762,5 @@ set.user.for.moad = function(user, artist.data.listenned, artist.data.new, days.
          col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
 
 
-########################### ShiftBand ##################################
 
-random.probability.sort = function(w){
-  total = sum(w)
-  target = runif(1, 0, total)
-  i = 1
-  while(total - w[i] > target){
-    total = total - w[i]
-    i = i + 1
-  }
-  return(i)
-}
 
-set.probability = function(i){
-  return((1 - GAMMA) * w[i] / W + GAMMA / K)
-}
-
-set.weights = function(i){
-  w[i] = w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S)))) # S = number of days
-}
-
-set.aspects = function(scenario){
-  if(scenario <= 4)
-}
-
-w = rep(1,K)
-
-W = sum(w)
-p = lapply(c(1:K), set.probability) %>% as.numeric()
-
-it = random.probability.sort(w)
-
-# run moad with scenario "it" to collect reward
-xit = 0.6
-
-x.exp = rep(0,K)
-x.exp[it] = xit / p[it]
-
-w = lapply(c(1:K), set.weights) %>% as.numeric()

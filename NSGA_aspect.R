@@ -73,6 +73,9 @@ similarity.function.contemporaneity = function(data){
     uc = max(a_data$debut, b_data$debut)
     pt = min(a_data$last, b_data$last)
     
+    if (ut == pc)
+      return(1)
+    
     sim = (pt - uc)/(ut - pc)
     return((sim+1)/2)
   }
@@ -81,10 +84,9 @@ similarity.function.contemporaneity = function(data){
   artist_simi$sim = sim
   artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
   artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
-  artist_simi = bind_rows(artist_simi, artist_simi_replicated, artists_identity)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
   
-  matrix = artist_simi %>% cast(V1~V2, mean) %>% 
-    select(-V1)
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
   
   matrix = matrix %>% as.matrix()
   return(matrix)
