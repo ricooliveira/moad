@@ -93,10 +93,9 @@ similarity.function.contemporaneity = function(data){
   artist_simi$sim = sim
   artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
   artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
-  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
+  artist_simi = bind_rows(artist_simi, artist_simi_replicated, artists_identity)
   
-  matrix = artist_simi %>% cast(V1~V2, mean) %>% 
-    select(-V1)
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
   
   matrix = matrix %>% as.matrix()
   return(matrix)
@@ -341,10 +340,12 @@ nsga2R.altered.random = function (fn, varNo, objDim, lowerBounds = rep(-Inf, var
     cat("\n")
     childAfterX <- boundedSBXover(matingPool[, 1:varNo], 
                                   lowerBounds, upperBounds, cprob, XoverDistIdx)
+    childAfterX <- floor(childAfterX)  # Added here
     cat("mutation operator")
     cat("\n")
     childAfterM <- boundedPolyMutation(childAfterX, lowerBounds, 
                                        upperBounds, mprob, MuDistIdx)
+    childAfterM <- floor(childAfterM)
     cat("evaluate the objective fns of childAfterM")
     cat("\n")
     childAfterM <- cbind(childAfterM, t(apply(childAfterM, 
@@ -531,7 +532,6 @@ boundedSBXover.altered =function (parent_chromosome, lowerBounds, upperBounds, c
           #   print("breakpoint")
           # }
           if (child1 > yu) {
-            print("aqui")
             child1 = yu
           }
           else if (child1 < yl) {
@@ -660,31 +660,34 @@ distance.functions[[3]] <- distance.function.genre
 
 ########################### NSGA - MOAD + ShiftBand ##################################
 
+#ShiftBand implemented as seen in
+# AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
 moad = function(user){
 
   # user = 7687
   
-  random.probability.sort = function(w){
-    total = sum(w)
+  random.probability.sort = function(p){
+    total = sum(p)
     target = runif(1, 0, total)
     i = 1
-    while(total - w[i] > target){
-      total = total - w[i]
+    while(total - p[i] > target){
+      total = total - p[i]
       i = i + 1
     }
     return(i)
   }
-  
-  set.probability = function(i){
+
+  set.probability = function(i, w, W){
     return((1 - GAMMA) * w[i] / W + GAMMA / K)
   }
   
-  set.weights = function(i){
-    w[i] = w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S)))) # S = number of days
+  set.weights = function(i, w, W, p, x.exp){
+    return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
   }
   
   # setup ShiftBand
-  w = rep(1,K)
+  w.diversity = rep(1,K)
+  w.affinity = rep(1,K)
   
   #setup moad
   N = nrow(artist.data)
@@ -697,6 +700,7 @@ moad = function(user){
   days.history$timestamp = days.history$timestamp / (60*60*24) # timestamp in seconds switched to days
   days.history$timestamp = floor(days.history$timestamp)
   days.history.unique = days.history$timestamp %>% unique()
+  S = length(days.history.unique) # Set S as the number of days
   
   for (t in days.history.unique) {
   
@@ -706,10 +710,12 @@ moad = function(user){
     data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned.dayt$`artist-name`,]  
     
     # repeat for the user
-    W = sum(w)
-    p = lapply(c(1:K), set.probability) %>% as.numeric()
-    
-    scenario = random.probability.sort(w) # selects scenarios considering ShiftBand probabilities
+    W.diversity = sum(w.diversity)
+    W.affinity = sum(w.affinity)
+    p.diversity = lapply(c(1:K), set.probability, w.diversity, W.diversity) %>% as.numeric()
+    p.affinity = lapply(c(1:K), set.probability, w.affinity, W.affinity) %>% as.numeric()
+
+    scenario = random.probability.sort((p.diversity + p.affinity)/2) # selects scenarios considering ShiftBand probabilities
     
     # determine aspects to diversify or not depending on the scenario selection
     aspects.all = c(1,2,3)
@@ -717,24 +723,34 @@ moad = function(user){
     if(scenario >= 4){
       aspects.to.diversify = c(aspects.to.diversify,1)
     }
-    if(scenario %% 2 == 0){
-      aspects.to.diversify = c(aspects.to.diversify,3)
-    }
     if(scenario == 3 | scenario == 4 | scenario == 7 | scenario == 8){
       aspects.to.diversify = c(aspects.to.diversify,2)
     }
+    if(scenario %% 2 == 0){
+      aspects.to.diversify = c(aspects.to.diversify,3)
+    }
+    
     aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
-    # Run NSGA to collect reward <<<<=========================================================================================  PAU AQUI
+    # Run NSGA to collect reward 
     results <- nsga2R.altered.random(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
                                      upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
                                      generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
     
-    # Ending the ShiftBand algorithm
-    x.exp = rep(0,K)
-    x.exp[it] = xit / p[it]
+    nondominated = (fastNonDominatedSorting.altered(results$objectives))[[1]]
+    best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
     
-    w = lapply(c(1:K), set.weights) %>% as.numeric()
+    xit.diversity = results$objectives[best.solution, 1]
+    xit.affinity = results$objectives[best.solution, 2]
+    
+    # Ending the ShiftBand algorithm
+    x.diversity.exp = rep(0,K)
+    x.diversity.exp[scenario] = xit.diversity / p.diversity[scenario]
+    x.affinity.exp = rep(0,K)
+    x.affinity.exp[scenario] = xit.affinity / p.affinity[scenario]
+    
+    w.diversity = lapply(c(1:K), set.weights, w.diversity, W.diversity, p.diversity, x.diversity.exp) %>% as.numeric()
+    w.affinity = lapply(c(1:K), set.weights, w.affinity, W.affinity, p.affinity, x.affinity.exp) %>% as.numeric()
     
   }
 
@@ -747,8 +763,7 @@ moad = function(user){
   
   
   
-  nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
-  best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
+  
   
   if(length(nondominated) == 1){
     df = bind_cols(as.data.frame(rep(u,TOPN)),
