@@ -32,7 +32,7 @@ S = 5 # Number of days in user history
 
 TOPN = 10
 TOPN_RERANK = 50
-address <- "/local/datasets/"
+address <- "/local/Scripts/moad/"
 
 # aspects setup
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
@@ -559,7 +559,7 @@ boundedSBXover.altered =function (parent_chromosome, lowerBounds, upperBounds, c
 
 ########################## DATA LOAD ############################
 
-artist.data <- fread(paste0(address,"experimento/artist.data.txt"), 
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
                      sep = ";", 
                      verbose = TRUE,
                      header = TRUE)
@@ -577,33 +577,19 @@ for(i in col){
   artist.data[which(is.na(artist.data[,i])),i] = 0
 }
 
-ubcf.top10 <- fread(paste0(address,"experimento/sample1000.ubcf.top10.csv"), 
-                    sep = ";", 
-                    verbose = TRUE,
-                    header = FALSE,
-                    col.names = c("user", "artist"))
-ubcf.top10 = as.data.frame(ubcf.top10)
-
-td.top10 <- fread(paste0(address,"experimento/sample1000.topic-diversification.top10.txt"),
-                  sep = "\t",
-                  verbose = TRUE,
-                  header = FALSE,
-                  col.names = c("user", "artist"))
-td.top10 = as.data.frame(td.top10)
-
-data.train <- fread(paste0(address,"experimento/LFM_train.txt"), 
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
                     sep = "\t", 
                     verbose = TRUE,
                     header = TRUE)
 data.train = as.data.frame(data.train)
 
-data.test <- fread(paste0(address,"experimento/LFM_test.txt"), 
+data.test <- fread(paste0(address,"data/LFM_test.txt"), 
                    sep = "\t", 
                    verbose = TRUE,
                    header = TRUE)
 data.test = as.data.frame(data.test)
 
-genre.centroids <- fread(paste0(address,"experimento/user.history.centroids.txt"), 
+genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"), 
                          sep = ",", 
                          verbose = TRUE,
                          header = TRUE)
@@ -664,6 +650,7 @@ distance.functions[[3]] <- distance.function.genre
 # AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
 moad = function(user){
 
+  # test
   # user = 7687
   
   random.probability.sort = function(p){
@@ -701,9 +688,11 @@ moad = function(user){
   days.history$timestamp = floor(days.history$timestamp)
   days.history.unique = days.history$timestamp %>% unique()
   S = length(days.history.unique) # Set S as the number of days
+  TRIALS = S # considering each day as a trial, and also as a segment with different propension (bandit)
   
-  for (t in days.history.unique) {
+  one.day.moad = function(t){
   
+    # test
     # t = days.history.unique[1]
     
     artist.data.listenned.dayt = days.history[days.history$timestamp == t,]
@@ -740,6 +729,21 @@ moad = function(user){
     nondominated = (fastNonDominatedSorting.altered(results$objectives))[[1]]
     best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
     
+    if(length(nondominated) == 1){
+      df = as.data.frame(artist.data.new[as.vector(t(as.data.frame(t(results$parameters[nondominated,]))[best.solution,])),"Artist"])
+    }else{
+      df = as.data.frame(artist.data.new[results$parameters[nondominated,][best.solution,],"Artist"])
+    }
+    df = bind_cols(as.data.frame(rep(user,TOPN)),
+                   as.data.frame(rep(t,TOPN)),
+                   as.data.frame(rep(scenario,TOPN)),
+                   as.data.frame(rep(results$objectives[best.solution,1],TOPN)),
+                   as.data.frame(rep(results$objectives[best.solution,2],TOPN)),
+                   df)
+    fwrite(df,
+           paste0(address,"results/sample1000.nsga.shiftband.top10.pop10.gen20-exec.txt"), #replace unique for args[1] when parallelizing
+           col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
+    
     xit.diversity = results$objectives[best.solution, 1]
     xit.affinity = results$objectives[best.solution, 2]
     
@@ -753,29 +757,8 @@ moad = function(user){
     w.affinity = lapply(c(1:K), set.weights, w.affinity, W.affinity, p.affinity, x.affinity.exp) %>% as.numeric()
     
   }
-
+  lapply(days.history.unique, one.day.moad)
 }
 
-
-
-
-  
-  
-  
-  
-  
-  
-  if(length(nondominated) == 1){
-    df = bind_cols(as.data.frame(rep(u,TOPN)),
-                   as.data.frame(artist.data.new[as.vector(t(as.data.frame(t(results$parameters[nondominated,]))[best.solution,])),"Artist"]))
-  }else{
-    df = bind_cols(as.data.frame(rep(u,TOPN)),
-                   as.data.frame(artist.data.new[results$parameters[nondominated,][best.solution,],"Artist"]))
-  }
-  fwrite(df,
-         paste0(address,"experimento/resultados_novos/sample1000.nsga.top10.div34.pop10.gen20-exec",args[1],".txt"), #replace unique for args[1] when parallelizing
-         col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
-
-
-
-
+users = data.train$`user-id` %>% unique()
+lapply(users, moad)
