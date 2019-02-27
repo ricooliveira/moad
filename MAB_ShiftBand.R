@@ -652,7 +652,6 @@ moad = function(user){
 
   # test
   # user = 7687
-  
   random.probability.sort = function(p){
     total = sum(p)
     target = runif(1, 0, total)
