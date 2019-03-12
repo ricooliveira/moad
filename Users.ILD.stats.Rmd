@@ -1,0 +1,210 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)
+library(data.table)
+library(reshape)
+library(lsa)
+```
+
+```{r}
+# Constants
+
+address <- "/local/Scripts/moad/"
+```
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+```{r}
+
+# Data Load
+
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
+                     sep = ";", 
+                     verbose = TRUE,
+                     header = TRUE)
+artist.data = as.data.frame(artist.data)
+
+# Correcting debut year from Rod Stewart - wrong in MusicBrainz
+
+artist.data[which(artist.data$Artist == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.data[which(artist.data$Artist == "Rod_Stewart"),"debut"] = 1968
+
+# Input 0 in NA values
+
+col = c(3:6)
+for(i in col){
+  artist.data[which(is.na(artist.data[,i])),i] = 0
+}
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+
+data.test <- fread(paste0(address,"data/LFM_test.txt"), 
+                   sep = "\t", 
+                   verbose = TRUE,
+                   header = TRUE)
+data.test = as.data.frame(data.test)
+
+# Calculate frequencies for IOF for type and Locality
+
+by.area = group_by(artist.data,area)
+freq.area = dplyr::summarise(by.area, total = n())
+
+```
+
+
+```{r}
+
+# Similarity and ILD functions
+
+similarity.function.genre = function(data){
+  return(cosine(t(as.matrix(data))))
+}
+
+similarity.function.locality = function(data){
+  n = nrow(data)
+  m = matrix(0L,n,n)
+  N = nrow(artist.data)
+  for(i in 1:n){
+    for(j in 1:n){
+      if(data[i,"area"] == data[j,"area"]){
+        m[i,j] = 1
+      } else {  
+        m[i,j] = 1 / (1 + log10(N/(as.numeric(freq.area[which(data[i,"area"] == freq.area$area),"total"]))) 
+                      * log10(N/(as.numeric(freq.area[which(data[j,"area"] == freq.area$area),"total"]))))
+      }
+    }
+  }
+  return(m)
+}
+
+similarity.function.contemporaneity = function(data){
+  artistas = rownames(data)
+  data$artista = artistas
+  artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
+  
+  sim_between_artists = function(x, data){
+    a = x[1]
+    b = x[2]
+    a_data =  data %>% filter(artista %in% a)
+    b_data =  data %>% filter(artista %in% b)
+    
+    pc = min(a_data$debut, b_data$debut)
+    ut = max(a_data$last, b_data$last)
+    
+    uc = max(a_data$debut, b_data$debut)
+    pt = min(a_data$last, b_data$last)
+    
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
+    return((sim+1)/2)
+  }
+  
+  sim = apply(artist_simi, 1, sim_between_artists, data)
+  artist_simi$sim = sim
+  artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
+  artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
+  
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
+  
+  matrix = matrix %>% as.matrix()
+  return(matrix)
+}
+
+ILD = function(data, similarity.function){
+  k=nrow(data)
+  if(k > 1){
+    sum.dissimilarity = 0
+    similarity.matrix = similarity.function(data)
+    dissimilarity.matrix = 1 - similarity.matrix
+    sum.dissimilarity = sum(colSums(dissimilarity.matrix))
+    return(sum.dissimilarity/(k*(k-1)))
+  }else{
+    return(0)
+  }
+}
+
+list.ILD = function(list.elements){
+  list.elements = list.elements %>% as.data.frame()
+  size = nrow(list.elements)
+  # list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
+  names(list.elements) = "artist"
+  # n = length(aspects.to.diversify)
+  df = artist.data[artist.data$Artist %in% list.elements$artist,]
+  
+  return(c(
+            ILD(df[(aspects[[1]])], similarity.function.contemporaneity),
+            ILD(df[(aspects[[2]])], similarity.function.locality),
+            ILD(df[(aspects[[3]])], similarity.function.genre))
+          )
+}
+```
+
+```{r}
+# Aspects
+
+aspects <- vector(mode="list", length=3)
+names(aspects) <- c("Contemporaneity", "Locality", "Genre")
+aspects[[1]] <- c(5,6); aspects[[2]] <- 4; aspects[[3]] <- 7:ncol(artist.data)
+similarity.functions <- vector(mode="list", length=3)
+names(similarity.functions) <- c("Contemporaneity", "Locality", "Genre")
+similarity.functions[[1]] <- similarity.function.contemporaneity; similarity.functions[[2]] <- similarity.function.locality
+similarity.functions[[3]] <- similarity.function.genre
+
+```
+
+```{r}
+users = data.train$`user-id` %>% unique()
+user = users[1]
+
+
+for(user in users) {
+  days.history = data.train[which(data.train$`user-id` == user),]
+  days.history$timestamp = days.history$timestamp / (60*60*24) # timestamp in seconds switched to days
+  days.history$timestamp = floor(days.history$timestamp)
+  days.history.unique = days.history$timestamp %>% unique()
+
+  one.day.ILD = function(day){
+    artist.data.listenned.day = days.history[days.history$timestamp == day,]
+    return(list.ILD(artist.data.listenned.day$`artist-name`))
+  }
+  
+  ilds = lapply(days.history.unique, one.day.ILD)
+  ilds = cbind(days.history.unique, ilds %>% as.data.frame() %>% t()) %>% as.data.frame()
+  fwrite(ilds,
+        paste0(address,"results/daily.propensity.ILD.user",user,".txt"), 
+        col.names = FALSE, row.names = FALSE, quote = TRUE) 
+
+}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

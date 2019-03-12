@@ -1,0 +1,133 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)
+library(data.table)
+```
+
+```{r}
+# Constants
+
+address <- "/local/Scripts/moad/"
+```
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+```{r}
+
+# Data Load
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+
+data.test <- fread(paste0(address,"data/LFM_test.txt"), 
+                   sep = "\t", 
+                   verbose = TRUE,
+                   header = TRUE)
+data.test = as.data.frame(data.test)
+
+```
+```{r}
+
+# Similarity and ILD functions
+
+similarity.function.genre = function(data){
+  return(cosine(t(as.matrix(data))))
+}
+
+similarity.function.locality = function(data){
+  n = nrow(data)
+  m = matrix(0L,n,n)
+  for(i in 1:n){
+    for(j in 1:n){
+      if(data[i,"area"] == data[j,"area"]){
+        m[i,j] = 1
+      } else {  
+        m[i,j] = 1 / (1 + log10(N/(as.numeric(freq.area[which(data[i,"area"] == freq.area$area),"total"]))) 
+                      * log10(N/(as.numeric(freq.area[which(data[j,"area"] == freq.area$area),"total"]))))
+      }
+    }
+  }
+  return(m)
+}
+
+similarity.function.contemporaneity = function(data){
+  artistas = rownames(data)
+  data$artista = artistas
+  artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
+  
+  sim_between_artists = function(x, data){
+    a = x[1]
+    b = x[2]
+    a_data =  data %>% filter(artista %in% a)
+    b_data =  data %>% filter(artista %in% b)
+    
+    pc = min(a_data$debut, b_data$debut)
+    ut = max(a_data$last, b_data$last)
+    
+    uc = max(a_data$debut, b_data$debut)
+    pt = min(a_data$last, b_data$last)
+    
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
+    return((sim+1)/2)
+  }
+  
+  sim = apply(artist_simi, 1, sim_between_artists, data)
+  artist_simi$sim = sim
+  artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
+  artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
+  artist_simi = bind_rows(artist_simi, artist_simi_replicated, artists_identity)
+  
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
+  
+  matrix = matrix %>% as.matrix()
+  return(matrix)
+}
+
+ILD = function(data, similarity.function){
+  k=nrow(data)
+  if(k > 1){
+    sum.dissimilarity = 0
+    similarity.matrix = similarity.function(data)
+    dissimilarity.matrix = 1 - similarity.matrix
+    sum.dissimilarity = sum(colSums(dissimilarity.matrix))
+    return(sum.dissimilarity/(k*(k-1)))
+  }else{
+    return(0)
+  }
+}
+
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

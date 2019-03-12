@@ -648,7 +648,13 @@ distance.functions[[3]] <- distance.function.genre
 
 #ShiftBand implemented as seen in
 # AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
-moad = function(user){
+
+users = data.train$`user-id` %>% unique()
+users = users[4:997]
+
+for(user in users) {
+
+# moad = function(user){
 
   # test
   # user = 7687
@@ -740,7 +746,7 @@ moad = function(user){
                    as.data.frame(rep(results$objectives[best.solution,2],TOPN)),
                    df)
     fwrite(df,
-           paste0(address,"results/sample1000.nsga.shiftband.top10.pop10.gen20-exec.txt"), #replace unique for args[1] when parallelizing
+           paste0(address,"results/sample1000.nsga.shiftband.top10.pop10.gen20-exec.user",user,".txt"), #replace unique for args[1] when parallelizing
            col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
     
     xit.diversity = results$objectives[best.solution, 1]
@@ -759,5 +765,4 @@ moad = function(user){
   lapply(days.history.unique, one.day.moad)
 }
 
-users = data.train$`user-id` %>% unique()
-lapply(users, moad)
+#lapply(users, moad)
