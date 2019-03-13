@@ -9,6 +9,9 @@ library(dplyr)
 library(data.table)
 library(reshape)
 library(lsa)
+library(ggplot2)
+library(gridExtra)
+library(pbapply)
 ```
 
 ```{r}
@@ -164,7 +167,7 @@ similarity.functions[[3]] <- similarity.function.genre
 
 ```{r}
 users = data.train$`user-id` %>% unique()
-user = users[1]
+#user = users[11]
 
 
 for(user in users) {
@@ -189,22 +192,51 @@ for(user in users) {
 
 ```
 
+```{r}
 
+# single file
 
+nm <- list.files(path=paste0(address, "results"))
 
+prov = lapply(nm, function(x) fread(input=paste0(address,"results/",x), sep = ",", header = FALSE)) 
+all.ilds = do.call(rbind, prov)
+fwrite(all.ilds,
+        paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+        col.names = FALSE, row.names = FALSE, quote = TRUE) 
 
+```
 
+```{r}
 
+# clean zeros and median
+names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
+all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
 
+median.contemporaneity = median(all.ilds$contemporaneity)
+median.locality = median(all.ilds$locality)
+median.genre = median(all.ilds$genre)
 
+```
 
+```{r}
 
+users = data.train$`user-id` %>% unique()
 
+generate.graphs.daily.ild = function(user){
 
+  ilds.user = fread(paste0(address, "results/daily.propensity.ILD.user", user,".txt"), sep = ",", header = F)
+  names(ilds.user) = c("day", "contemporaneity", "locality", "genre")
+  
+  graph.contemporaneity = ggplot(ilds.user, aes(day, contemporaneity)) + geom_bar(stat = "identity") +
+    geom_segment(aes(x = min(ilds.user$day), y = median.contemporaneity, xend = max(ilds.user$day), yend =  median.contemporaneity), colour = "red", size = 0.05)
+  graph.locality = ggplot(ilds.user, aes(day, locality)) + geom_bar(stat = "identity") +
+    geom_segment(aes(x = min(ilds.user$day), y = median.locality, xend = max(ilds.user$day), yend =  median.locality), colour = "red", size = 0.05)
+  graph.genre = ggplot(ilds.user, aes(day, genre)) + geom_bar(stat = "identity") +
+    geom_segment(aes(x = min(ilds.user$day), y = median.genre, xend = max(ilds.user$day), yend =  median.genre), colour = "red", size = 0.05)
+  ggsave(paste0(address, "results/graph.daily.propensity.ILD.user", user,".pdf"), arrangeGrob(graph.contemporaneity, graph.locality, graph.genre))
+}
 
+pblapply(users, generate.graphs.daily.ild)
 
-
-
-
-
+```
 
