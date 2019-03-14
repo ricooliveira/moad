@@ -212,13 +212,15 @@ fwrite(all.ilds,
 names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
 all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
 
-median.contemporaneity = median(all.ilds$contemporaneity)
-median.locality = median(all.ilds$locality)
-median.genre = median(all.ilds$genre)
+median.contemporaneity = median(all.ilds.filtered$contemporaneity)
+median.locality = median(all.ilds.filtered$locality)
+median.genre = median(all.ilds.filtered$genre)
 
 ```
 
 ```{r}
+
+# daily graphics
 
 users = data.train$`user-id` %>% unique()
 
@@ -239,4 +241,69 @@ generate.graphs.daily.ild = function(user){
 pblapply(users, generate.graphs.daily.ild)
 
 ```
+
+```{r}
+
+# daily boxplots
+
+days.grouped = group_by(all.ilds.filtered, day)
+users.by.day = summarise(days.grouped, total = n())
+big.day = users.by.day[which(users.by.day$total == max(users.by.day$total)),1] %>% as.numeric() # one month in the timeline, including the most used day
+big.month = all.ilds.filtered %>% filter(day >= big.day - 15 & day <= big.day + 15)
+
+big.month.melted = melt(big.month, id.vars = "day", measure.vars = c("contemporaneity", "locality", "genre"))
+big.month.melted$variable = as.factor(big.month.melted$variable)
+big.month.melted$day = as.factor(big.month.melted$day)
+
+#days.grouped.month = group_by(big.month.melted, day)
+
+g <- ggplot(big.month.melted, aes(x = day, y = value, fill = variable)) +
+  geom_boxplot(outlier.shape = NA) #+
+  #geom_segment(aes(x = min(big.month$day), y = median.contemporaneity, xend = max(big.month$day), yend =  median.contemporaneity), colour = "red", size = 0.05)
+g
+ggsave(paste0(address,"results/month.boxplot.pdf"), width = 30, height = 10, dpi = 300, units = "in")
+
+```
+
+```{r}
+
+# scenario plots
+
+cenarios.decimal = function(cenarios){
+  vec2dec = function(vec){
+    vec = vec[-1]
+    Reduce(function(x,y) x*2+y, vec)  
+  }
+  cenarios$scenario = cenarios %>% apply(1, vec2dec)
+  return(cenarios)
+}
+
+users = data.train$`user-id` %>% unique()
+#user = 7687
+
+generate.graphs.daily.scenarios = function(user){
+
+  ilds.user = fread(paste0(address, "results/daily.propensity.ILD.user", user,".txt"), sep = ",", header = F)
+  names(ilds.user) = c("day", "contemporaneity", "locality", "genre")
+  
+  scenarios.user = ilds.user
+  scenarios.user$contemporaneity = scenarios.user$contemporaneity > median.contemporaneity
+  scenarios.user$locality = scenarios.user$locality > median.locality
+  scenarios.user$genre = scenarios.user$genre > median.genre
+
+  scenarios.user = cenarios.decimal(scenarios.user)[,c(1,5)]
+  scenarios.user$scenario = scenarios.user$scenario + 1
+  
+  g = ggplot(scenarios.user, aes(day, scenario)) +
+    geom_bar(stat = "identity")
+    #geom_area()
+    #geom_line()
+  ggsave(paste0(address,"results/scenario.change.daily.user", user,".pdf"))
+}
+
+pblapply(users, generate.graphs.daily.scenarios)
+
+```
+
+
 
