@@ -1,0 +1,125 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("nsga2R")) {
+  install.packages("nsga2R", repos="http://cran.rstudio.com/") 
+}
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
+if (!require("lsa")) {
+  install.packages("lsa", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(nsga2R)
+library(reshape)
+library(lsa)
+
+```
+
+```{r}
+
+########################## CONSTANTS ##########################
+
+ALPHA = 0.1
+BETA = 0.1
+GAMMA = 0.1
+ETA = 0.1
+K = 8 # Number of scenarios
+TRIALS = 10 
+S = 5 # Number of days in user history
+
+TOPN = 10
+address <- "/local/Scripts/moad/"
+
+```
+
+```{r}
+
+########################## DATA LOAD ############################
+
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
+                     sep = ";", 
+                     verbose = TRUE,
+                     header = TRUE)
+artist.data = as.data.frame(artist.data)
+
+# Correcting debut year from Rod Stewart - wrong in MusicBrainz
+
+artist.data[which(artist.data$Artist == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.data[which(artist.data$Artist == "Rod_Stewart"),"debut"] = 1968
+
+# Input 0 in NA values
+
+col = c(3:6)
+for(i in col){
+  artist.data[which(is.na(artist.data[,i])),i] = 0
+}
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+
+data.test <- fread(paste0(address,"data/LFM_test.txt"), 
+                   sep = "\t", 
+                   verbose = TRUE,
+                   header = TRUE)
+data.test = as.data.frame(data.test)
+
+```
+
+```{r}
+  random.probability.sort = function(p){
+    total = sum(p)
+    target = runif(1, 0, total)
+    i = 1
+    while(total - p[i] > target){
+      total = total - p[i]
+      i = i + 1
+    }
+    return(i)
+  }
+
+  set.probability = function(i, w, W){
+    return((1 - GAMMA) * w[i] / W + GAMMA / K)
+  }
+  
+  set.weights = function(i, w, W, p, x.exp){
+    return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
+  }
+  
+  # setup ShiftBand
+  w = rep(1,K)
+
+  W = sum(w)
+  p = lapply(c(1:K), set.probability, w, W) %>% as.numeric()
+  
+  it = random.probability.sort(p)
+  
+  # collect reward
+  
+  xit = 0.5 # testing
+  
+  x.exp = rep(0,K)
+  x.exp[it] = xit / p[it]
+
+  w = lapply(c(1:K), set.weights, w, W, p, x.exp) %>% as.numeric()
+  
+```
+

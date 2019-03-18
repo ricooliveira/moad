@@ -650,7 +650,6 @@ distance.functions[[3]] <- distance.function.genre
 # AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
 
 users = data.train$`user-id` %>% unique()
-users = users[4:997]
 
 for(user in users) {
 
