@@ -84,7 +84,116 @@ data.test = as.data.frame(data.test)
 
 ```
 
+
+
 ```{r}
+# Similarity and ILD functions
+
+similarity.function.genre = function(data){
+  return(cosine(t(as.matrix(data))))
+}
+
+similarity.function.locality = function(data){
+  n = nrow(data)
+  m = matrix(0L,n,n)
+  N = nrow(artist.data)
+  for(i in 1:n){
+    for(j in 1:n){
+      if(data[i,"area"] == data[j,"area"]){
+        m[i,j] = 1
+      } else {  
+        m[i,j] = 1 / (1 + log10(N/(as.numeric(freq.area[which(data[i,"area"] == freq.area$area),"total"]))) 
+                      * log10(N/(as.numeric(freq.area[which(data[j,"area"] == freq.area$area),"total"]))))
+      }
+    }
+  }
+  return(m)
+}
+
+similarity.function.contemporaneity = function(data){
+  artistas = rownames(data)
+  data$artista = artistas
+  artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
+  
+  sim_between_artists = function(x, data){
+    a = x[1]
+    b = x[2]
+    a_data =  data %>% filter(artista %in% a)
+    b_data =  data %>% filter(artista %in% b)
+    
+    pc = min(a_data$debut, b_data$debut)
+    ut = max(a_data$last, b_data$last)
+    
+    uc = max(a_data$debut, b_data$debut)
+    pt = min(a_data$last, b_data$last)
+    
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
+    return((sim+1)/2)
+  }
+  
+  sim = apply(artist_simi, 1, sim_between_artists, data)
+  artist_simi$sim = sim
+  artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
+  artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
+  
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
+  
+  matrix = matrix %>% as.matrix()
+  return(matrix)
+}
+
+ILD = function(data, similarity.function){
+  k=nrow(data)
+  if(k > 1){
+    sum.dissimilarity = 0
+    similarity.matrix = similarity.function(data)
+    dissimilarity.matrix = 1 - similarity.matrix
+    sum.dissimilarity = sum(colSums(dissimilarity.matrix))
+    return(sum.dissimilarity/(k*(k-1)))
+  }else{
+    return(0)
+  }
+}
+
+list.ILD = function(list.elements){
+  list.elements = list.elements %>% as.data.frame()
+  size = nrow(list.elements)
+  # list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
+  names(list.elements) = "artist"
+  # n = length(aspects.to.diversify)
+  df = artist.data[artist.data$Artist %in% list.elements$artist,]
+  
+  return(c(
+            ILD(df[(aspects[[1]])], similarity.function.contemporaneity),
+            ILD(df[(aspects[[2]])], similarity.function.locality),
+            ILD(df[(aspects[[3]])], similarity.function.genre))
+          )
+}
+
+```
+
+```{r}
+
+# ShiftBand
+
+# history = data.train
+
+  all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+                   sep = ",") 
+  
+  # clean zeros and median
+  names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
+  all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
+  
+  median.contemporaneity = median(all.ilds.filtered$contemporaneity)
+  median.locality = median(all.ilds.filtered$locality)
+  median.genre = median(all.ilds.filtered$genre)
+
+
   random.probability.sort = function(p){
     total = sum(p)
     target = runif(1, 0, total)
@@ -104,22 +213,60 @@ data.test = as.data.frame(data.test)
     return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
   }
   
+  ild.2.scenario = function(ilds) {
+    c(ilds[1] > median.contemporaneity, ilds[2] > median.locality, ilds[3] > median.genre)
+  }
+
+  
+ 
+
+#user = 7687
+#history = data.train
+
+one.user.shiftband.ild = function(user, history){
+
   # setup ShiftBand
   w = rep(1,K)
+  user.history = data.train[which(history$`user-id` == user),]
+  user.history$timestamp = user.history$timestamp / (60*60*24) # timestamp in seconds switched to days
+  user.history$timestamp = floor(user.history$timestamp)
+  user.history.unique = user.history$timestamp %>% unique()
 
-  W = sum(w)
-  p = lapply(c(1:K), set.probability, w, W) %>% as.numeric()
+  for (day in user.history.unique){
+    # One day iter
+    W = sum(w)
+    p = lapply(c(1:K), set.probability, w, W) %>% as.numeric()
+    
+    it = random.probability.sort(p)
+    
+    chosen.scenario = c(FALSE,FALSE,FALSE)
+    if(it >= 5){
+      chosen.scenario[1] = TRUE
+    }
+    if(it == 3 | it == 4 | it == 7 | it == 8){
+      chosen.scenario[2] = TRUE
+    }
+    if(it %% 2 == 0){
+      chosen.scenario[3] = TRUE
+    }
   
-  it = random.probability.sort(p)
+    day.history = user.history %>% filter(timestamp == day)
+    ild.day = list.ILD(day.history$`artist-name`)
+    real.scenario = ild.2.scenario(ild.day)
+    
+     # collect reward
   
-  # collect reward
+    xit = cosine(real.scenario, chosen.scenario)
   
-  xit = 0.5 # testing
-  
-  x.exp = rep(0,K)
-  x.exp[it] = xit / p[it]
+    x.exp = rep(0,K)
+    x.exp[it] = xit / p[it]
 
-  w = lapply(c(1:K), set.weights, w, W, p, x.exp) %>% as.numeric()
+    w = lapply(c(1:K), set.weights, w, W, p, x.exp) %>% as.numeric()
   
+  }  
+
+}
+
+
 ```
 
