@@ -28,6 +28,7 @@ library(data.table)
 library(nsga2R)
 library(reshape)
 library(lsa)
+library(pbapply)
 
 ```
 
@@ -88,6 +89,14 @@ data.test = as.data.frame(data.test)
 
 ```{r}
 # Similarity and ILD functions
+
+coincidence = function(a, b){
+  if(length(a) == length(b)){
+    sum.vec = a %>% as.numeric() + b %>% as.numeric()
+    sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    return(sum(sum.vec) / length(sum.vec))
+  }
+}
 
 similarity.function.genre = function(data){
   return(cosine(t(as.matrix(data))))
@@ -231,7 +240,12 @@ one.user.shiftband.ild = function(user, history){
   user.history$timestamp = user.history$timestamp / (60*60*24) # timestamp in seconds switched to days
   user.history$timestamp = floor(user.history$timestamp)
   user.history.unique = user.history$timestamp %>% unique()
+  S = length(user.history.unique)
+  TRIALS = S
 
+  #day = user.history.unique[1]
+  
+  df = data.frame()
   for (day in user.history.unique){
     # One day iter
     W = sum(w)
@@ -253,20 +267,26 @@ one.user.shiftband.ild = function(user, history){
     day.history = user.history %>% filter(timestamp == day)
     ild.day = list.ILD(day.history$`artist-name`)
     real.scenario = ild.2.scenario(ild.day)
+    linha = c(day, chosen.scenario,real.scenario) %>% as.numeric() %>% as.data.frame() %>% t()
+    df = rbind(df, linha)
     
-     # collect reward
+    # collect reward
   
-    xit = cosine(real.scenario, chosen.scenario)
+    xit = coincidence(real.scenario, chosen.scenario)
   
     x.exp = rep(0,K)
     x.exp[it] = xit / p[it]
 
     w = lapply(c(1:K), set.weights, w, W, p, x.exp) %>% as.numeric()
   
-  }  
+  } 
+  fwrite(df,
+           paste0(address,"resultsshiftband/shiftband.ild.daily.user",user,".txt"), 
+           col.names = FALSE, row.names = FALSE, sep = ",")
 
 }
 
+pblapply(users, one.user.shiftband.ild, history = data.train)
 
 ```
 
