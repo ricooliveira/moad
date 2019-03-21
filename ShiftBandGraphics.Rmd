@@ -1,0 +1,129 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("pbapply")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("ggplot2")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(pbapply)
+library(ggplot2)
+
+```
+
+```{r}
+address <- "/local/Scripts/moad/"
+```
+
+```{r}
+coincidence = function(a, b){
+  if(length(a) == length(b)){
+    sum.vec = a %>% as.numeric() + b %>% as.numeric()
+    sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    return(sum(sum.vec) / length(sum.vec))
+  }
+}
+```
+
+```{r}
+
+# regret graphs
+
+NDAYS = 20
+
+nm <- list.files(path=paste0(address, "resultsshiftband"))
+nm = nm[-1]
+
+#all.results = lapply(nm, function(x) fread(input=paste0(address,"resultsshiftband/",x), sep = ",", header = FALSE)) 
+
+# test
+#user = prov[[2]]
+
+#for(user in all.results){
+generate.regret.graphics = function(user.result){
+  
+  user = fread(input=paste0(address,"resultsshiftband/",user.result))
+  userid = substr(user.result,25,nchar(user.result) - 4)
+  
+  day.regret = function(user){
+    return(1 - coincidence(user[2:4],user[5:7]))
+  }
+  
+  regrets = cbind(user[,1], apply(user, 1, day.regret))
+  names(regrets) = c("day", "regret")
+  
+  mean.regret = c()
+  for(day in 1:nrow(regrets)){
+    if (day <= NDAYS){
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
+    } else {
+        mean.regret = c(mean.regret, sum(regrets$regret[(day-NDAYS):day]) / NDAYS)
+    }
+  }
+  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  names(mean.regret) = c("day", "regret")
+  
+  g <- ggplot(mean.regret, aes(day, regret)) +
+    geom_line()
+  ggsave(paste0(address, "resultsshiftband/graph.shiftband.mean.daily.regret", userid,".pdf"))
+}
+
+pblapply(nm, generate.regret.graphics)
+
+```
+
+```{r}
+# random test
+
+set.seed(10)
+dayex = c(1:1000)
+teste1 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+teste2 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+teste3 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+teste4 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+teste5 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+teste6 = sample(seq(from = 0, to = 1, by = 1), size = 1000, replace = TRUE)
+
+df = data.frame(dayex,teste1,teste2,teste3,teste4,teste5,teste6)
+user = df
+
+  regrets = cbind(user, apply(user, 1, day.regret))[,c(1,8)]
+  names(regrets) = c("day", "regret")
+  
+  mean.regret = c()
+  for(day in 1:nrow(regrets)){
+    if (day <= NDAYS){
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
+    } else {
+        mean.regret = c(mean.regret, sum(regrets$regret[(day-NDAYS):day]) / NDAYS)
+    }
+  }
+  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  names(mean.regret) = c("day", "regret")
+  
+  g <- ggplot(mean.regret, aes(day, regret)) +
+    geom_line()
+  g
+
+```
+
+```{r}
+
+all.results
+
+
+```
+

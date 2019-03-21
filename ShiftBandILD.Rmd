@@ -13,9 +13,6 @@ if (!require("dplyr")) {
 if (!require("data.table")) {
   install.packages("data.table", repos="http://cran.rstudio.com/") 
 }
-if (!require("nsga2R")) {
-  install.packages("nsga2R", repos="http://cran.rstudio.com/") 
-}
 if (!require("reshape")) {
   install.packages("reshape", repos="http://cran.rstudio.com/") 
 }
@@ -25,7 +22,6 @@ if (!require("lsa")) {
 
 library(dplyr)
 library(data.table)
-library(nsga2R)
 library(reshape)
 library(lsa)
 library(pbapply)
@@ -189,7 +185,10 @@ list.ILD = function(list.elements){
 
 # ShiftBand
 
-# history = data.train
+  # test
+  # history = data.train
+
+  users = data.train$`user-id` %>% unique()
 
   all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
                    sep = ",") 
@@ -228,7 +227,7 @@ list.ILD = function(list.elements){
 
   
  
-
+# test
 #user = 7687
 #history = data.train
 
@@ -243,6 +242,7 @@ one.user.shiftband.ild = function(user, history){
   S = length(user.history.unique)
   TRIALS = S
 
+  # test
   #day = user.history.unique[1]
   
   df = data.frame()
@@ -287,6 +287,19 @@ one.user.shiftband.ild = function(user, history){
 }
 
 pblapply(users, one.user.shiftband.ild, history = data.train)
+
+```
+
+```{r}
+
+# join results in one file
+nm <- list.files(path=paste0(address, "resultsshiftband"))
+
+prov = lapply(nm, function(x) fread(input=paste0(address,"resultsshiftband/",x), sep = ",", header = FALSE)) 
+all.results = do.call(rbind, prov)
+fwrite(all.results,
+        paste0(address,"resultsshiftband/shiftband.ild.daily.allusers.txt"), 
+        col.names = FALSE, row.names = FALSE, quote = TRUE) 
 
 ```
 
