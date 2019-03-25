@@ -86,11 +86,12 @@ data.test = as.data.frame(data.test)
 ```{r}
 # Similarity and ILD functions
 
-coincidence = function(a, b){
-  if(length(a) == length(b)){
-    sum.vec = a %>% as.numeric() + b %>% as.numeric()
-    sum.vec = ((sum.vec %% 2) - 1) %>% abs()
-    return(sum(sum.vec) / length(sum.vec))
+coincidence = function(chosen, real){
+  if(length(chosen) == length(real)){
+    sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
+    #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    sum.vec = (sum.vec == 1) %>% as.numeric()
+    return((length(sum.vec) - sum(sum.vec)) / length(sum.vec))
   }
 }
 
@@ -197,9 +198,13 @@ list.ILD = function(list.elements){
   names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
   all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
   
-  median.contemporaneity = median(all.ilds.filtered$contemporaneity)
-  median.locality = median(all.ilds.filtered$locality)
-  median.genre = median(all.ilds.filtered$genre)
+  summary.contemporaneity = summary(all.ilds.filtered$contemporaneity)
+  summary.locality = summary(all.ilds.filtered$locality)
+  summary.genre = summary(all.ilds.filtered$genre)
+  
+  #median.contemporaneity = median(all.ilds.filtered$contemporaneity)
+  #median.locality = median(all.ilds.filtered$locality)
+  #median.genre = median(all.ilds.filtered$genre)
 
 
   random.probability.sort = function(p){
@@ -222,7 +227,14 @@ list.ILD = function(list.elements){
   }
   
   ild.2.scenario = function(ilds) {
-    c(ilds[1] > median.contemporaneity, ilds[2] > median.locality, ilds[3] > median.genre)
+    x = 0.5; y = 0.5; z = 0.5
+    if(ilds[1] >= summary.contemporaneity[5]) {x = 1}
+    if(ilds[1] <= summary.contemporaneity[2]) {x = 0}
+    if(ilds[2] >= summary.locality[5]) {y = 1}
+    if(ilds[2] <= summary.locality[2]) {y = 0}
+    if(ilds[3] >= summary.genre[5]) {z = 1}
+    if(ilds[3] <= summary.genre[2]) {z = 0}
+    return(c(x, y, z))
   }
 
   
@@ -281,7 +293,7 @@ one.user.shiftband.ild = function(user, history){
   
   } 
   fwrite(df,
-           paste0(address,"resultsshiftband/shiftband.ild.daily.user",user,".txt"), 
+           paste0(address,"resultsshiftband2/shiftband.ild.daily.user",user,".txt"), 
            col.names = FALSE, row.names = FALSE, sep = ",")
 
 }
