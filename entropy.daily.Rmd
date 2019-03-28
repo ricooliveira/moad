@@ -1,0 +1,243 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+library(readr)
+library(data.table)
+library(dplyr)
+library(reshape2)
+library(entropy)
+library(ggplot2)
+library(pbapply)
+
+```
+
+```{r}
+########################## CONSTANTS ##########################
+
+address <- "/local/Scripts/moad/"
+size_sample = 1000
+
+```
+
+```{r}
+########################## FUNCTIONS ##########################
+
+genre.meltcast <- function(day, user.history){
+  Iday = user.history[(which(user.history$timestamp == day)),]
+  H = inner_join(Iday, artist.data, by = "artistname")
+  meltH = melt(H, id.vars = c("userid"), measure.vars = c(9:ncol(H)))
+  castH = dcast(meltH, userid ~ variable, sum)
+}
+
+decade <- function(year){
+  # if((year > 1919) & (year < 2000))
+  #   return(((floor(year / 10)) %% 10) * 10)
+  # else
+   return (floor(year / 10) * 10)
+}
+
+locality.entropy <- function(day, user.history){
+  Iday = user.history[(which(user.history$timestamp == day)),]
+  H = inner_join(Iday, artist.data, by = "artistname")
+  H = H[,c("userid","area")]
+  result = entropy(H$area,method = "ML")
+  return(result)
+}
+
+# day = user.history.unique[1]
+contemporaneity.entropy <- function(day, user.history){
+  Iday = user.history[(which(user.history$timestamp == day)),]
+  H = inner_join(Iday, artist.data, by = "artistname")
+  Hd = H[,c("userid","debut")]
+  Hl = H[,c("userid","last")]
+  result.debut = entropy(Hd$debut,method = "ML")
+  result.last = entropy(Hl$last,method = "ML")
+  return(mean(result.debut,result.last))
+}
+
+```
+
+```{r}
+########################## DATA LOAD ##########################
+
+#LFM <- fread(paste0(address,"experimento/LFM.artists.available.txt"), 
+LFM <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    na.strings = "")
+LFM = as.data.frame(LFM)
+names(LFM) = c("albumid" ,"artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname", "albumname")
+LFM[,5:9] = NULL
+
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
+             sep = ";", 
+             verbose = TRUE,
+             na.strings = "")
+artist.data = as.data.frame(artist.data)
+names(artist.data)[2] = c("artistname")
+
+# Correct data 
+artist.data[which(artist.data$artistname == "The Pains of Being Pure at Heart"),"last"] = 2017
+artist.data[which(artist.data$artistname == "Rod Stewart"),"debut"] = 1968
+
+artist.data.decades = artist.data[,c("id", "artistname", "debut", "last")]
+
+for(i in 1:nrow(artist.data)){
+  artist.data[i,"debut"] = decade(artist.data[i,"debut"])
+  artist.data[i,"last"] = decade(artist.data[i,"last"])
+}
+
+users = LFM$userid %>% unique # as.list(unique(LFM$userid))
+
+```
+
+```{r}
+
+one.user.daily.entropy = function(user, history){
+
+  # test
+  # user = 7687
+  # history = LFM
+  
+  user.history = history[which(history$userid == user),]
+  user.history$timestamp = user.history$timestamp / (60*60*24) # timestamp in seconds switched to days
+  user.history$timestamp = floor(user.history$timestamp)
+  user.history.unique = user.history$timestamp %>% unique()
+  
+  daily.entropy.contemporaneity = sapply(user.history.unique, contemporaneity.entropy, user.history) #%>% as.data.frame() %>% t()
+  daily.entropy.locality = sapply(user.history.unique, locality.entropy, user.history) #%>% as.data.frame() %>% t()
+  
+  days.histories = do.call(rbind, lapply(user.history.unique, genre.meltcast, user.history)) %>% as.data.frame()
+  daily.entropy.genre = apply(days.histories[,2:ncol(days.histories)], 1, entropy)
+  
+  user.results = cbind(user.history.unique, daily.entropy.contemporaneity, daily.entropy.locality, daily.entropy.genre) %>% as.data.frame()
+  
+  fwrite(user.results, 
+        paste0(address,"resultsentropy/daily.entropy.user", user, ".txt"),
+        row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+
+}
+
+lapply(users, one.user.daily.entropy, LFM)
+
+```
+
+```{r}
+
+# calculate median of each aspect's entropy
+nm <- list.files(path=paste0(address, "resultsentropy"))
+
+prov = lapply(nm, function(x) fread(input=paste0(address,"resultsentropy/",x), sep = "\t", header = FALSE)) 
+all.results = do.call(rbind, prov)
+names(all.results) = c("user", "contemporaneity", "locality", "genre")
+
+median.entropy.contemporaneity = median(all.results$contemporaneity)
+median.entropy.locality = median(all.results$locality)
+median.entropy.genre = median(all.results$genre)
+
+```
+
+```{r}
+
+#### UNTESTED
+
+entropy.2.scenario = function(vec){
+  result = c(0, 0, 0)
+  if(vec[1] > median.entropy.contemporaneity){
+    result[1] = 1
+  }
+  if(vec[2] > median.entropy.locality){
+    result[2] = 1
+  }
+  if(vec[3] > median.entropy.genre){
+    result[3] = 1
+  }
+  return(result)
+}
+
+# test
+# user = 7687
+
+generate.scenario.entropy = function(user){
+  aspects.entropy = fread(paste0(address,"resultsentropy/daily.entropy.user",user,".txt"),
+        sep = "\t")
+  days = aspects.entropy[,1]
+  aspects.entropy = aspects.entropy[,-1]
+  scenarios.entropy = do.call(rbind, apply(aspects.entropy, 1, entropy.2.scenario) %>% as.data.frame())
+  
+  # buscar ilds - ground truth
+  daily.ild = fread(paste0(address,"resultsshiftband2/shiftband.ild.daily.user",user,".txt"),
+        sep = ",")
+  daily.ild = daily.ild[,c(5:7)]
+  
+  fwrite(cbind(days, scenarios.entropy, daily.ild),
+         paste0(address,"resultsentropy/daily.scenario.user", user, ".txt"),
+         row.names = FALSE, col.names = FALSE, sep = "\t")
+}
+
+pblapply(users, generate.scenario.entropy)
+
+```
+
+```{r}
+
+coincidence = function(chosen, real){
+  if(length(chosen) == length(real)){
+    sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
+    #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    sum.vec = (sum.vec == 1) %>% as.numeric()
+    return((length(sum.vec) - sum(sum.vec)) / length(sum.vec))
+  }
+}
+
+```
+
+```{r}
+
+# regret graphs
+
+# NDAYS = 20
+
+nm <- list.files(path=paste0(address, "resultsentropy"))
+nm = nm[998:1994]
+
+# test
+# user.result = nm[1]
+
+generate.regret.graphics = function(user.result){
+  
+  user = fread(input=paste0(address,"resultsentropy/",user.result))
+  userid = substr(user.result,20,nchar(user.result) - 4)
+  
+  day.regret = function(user){
+    return(1 - coincidence(user[2:4],user[5:7]))
+  }
+  
+  regrets = cbind(user[,1], apply(user, 1, day.regret))
+  names(regrets) = c("day", "regret")
+  
+  mean.regret = c()
+  for(day in 1:nrow(regrets)){
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
+  }
+  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  names(mean.regret) = c("day", "regret")
+  
+  fwrite(mean.regret,
+         paste0(address,"resultsentropy/entropy.daily.regret.user", userid, ".txt"),
+         row.names = FALSE, col.names = FALSE, sep = "\t")
+  
+  #g <- ggplot(mean.regret, aes(day, regret)) +
+  #  geom_line()
+  #ggsave(paste0(address, "resultsentropy/graph.entropy.mean.daily.regret", userid,".pdf"))
+}
+
+pblapply(nm, generate.regret.graphics)
+
+
+```
+

@@ -8,7 +8,7 @@ library(pbapply)
 
 ########################## CONSTANTS ##########################
 
-address <- "/local/datasets/"
+address <- "/local/Scripts/moad/"
 size_sample = 1000
 
 ########################## FUNCTION ##########################
@@ -63,7 +63,8 @@ contemporaneity.entropy <- function(u){
 
 ########################## DATA READ ##########################
 
-LFM <- fread(paste0(address,"experimento/LFM.artists.available.txt"), 
+#LFM <- fread(paste0(address,"experimento/LFM.artists.available.txt"), 
+LFM <- fread(paste0(address,"data/LFM_train.txt"), 
                     sep = "\t", 
                     verbose = TRUE,
                     na.strings = "")
@@ -71,7 +72,7 @@ LFM = as.data.frame(LFM)
 names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
 LFM[,4:8] = NULL
 
-artist.data <- fread(paste0(address,"experimento/artist.data.txt"), 
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
              sep = ";", 
              verbose = TRUE,
              na.strings = "")

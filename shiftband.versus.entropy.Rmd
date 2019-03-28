@@ -1,0 +1,76 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("pbapply")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("ggplot2")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(pbapply)
+library(ggplot2)
+
+```
+
+```{r}
+
+address <- "/local/Scripts/moad/"
+
+```
+
+```{r}
+
+########################## DATA LOAD ############################
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+
+users = data.train$`user-id` %>% unique()
+
+```
+
+```{r}
+
+# test
+# user = users[3]
+
+generate.user.graph.entropy.vs.shiftband = function(user){
+  
+  sb = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  
+  etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  
+  regrets = cbind(sb, etp)  
+  regrets = regrets[,-3]
+  names(regrets) = c("day", "ShiftBand", "Entropy")
+  
+  g <- ggplot(regrets, aes(day)) +
+    geom_line(aes(y = ShiftBand, colour = "ShiftBand")) +
+    geom_line(aes(y = Entropy, colour = "Entropy"))
+  ggsave(paste0(address, "resultsregretgraphs/graph.shiftband.vs.entropy.daily.regret.user", user,".pdf"))
+  
+}
+
+pblapply(users, generate.user.graph.entropy.vs.shiftband)
+
+```
+
