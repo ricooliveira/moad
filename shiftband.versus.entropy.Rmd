@@ -47,6 +47,60 @@ users = data.train$`user-id` %>% unique()
 ```
 
 ```{r}
+coincidence = function(real, chosen){
+  if(length(chosen) == length(real)){
+    sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
+    #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    sum.vec = (sum.vec == 1) %>% as.numeric()
+    return((length(sum.vec) - sum(sum.vec)) / length(sum.vec))
+  }
+}
+```
+
+```{r}
+
+# Baseline - previous day ILD
+
+# test
+# user = users[2]
+
+baseline.regrets = function(user){
+  
+  scenarios = fread(paste0(address, "resultsshiftband2/shiftband.ild.daily.user", user,".txt"),
+        sep = ",", header = F)
+  scenarios.ildpd = fread(paste0(address, "resultsildpd/shiftband.ild.daily.user", user,".txt"),
+        sep = ",", header = F)
+  scenarios.ildpd = scenarios.ildpd %>% select(V5,V6,V7) %>% slice(-n())
+  
+  linha = data.frame(V5 = sample(c(0,1), size = 1), V6 = sample(c(0,1), size = 1), V7 = sample(c(0,1), size = 1))
+  scenarios.ildpd = bind_rows(linha, scenarios.ildpd)
+  scenarios.ildpd = cbind(scenarios[,1], scenarios.ildpd, scenarios[,c(5:7)])
+  
+  day.regret = function(vec){
+    return(1 - coincidence(vec[2:4], vec[5:7]))
+  }
+  
+  regrets = cbind(user, apply(scenarios.ildpd, 1, day.regret)) %>% as.data.frame()
+  names(regrets) = c("day", "regret")
+  
+  mean.regret = c()
+  for(day in 1:nrow(regrets)){
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
+  }
+  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  names(mean.regret) = c("day", "regret")
+  
+  fwrite(mean.regret,
+         paste0(address,"resultsildpd/ildpd.daily.regret.user", user, ".txt"),
+         row.names = FALSE, col.names = FALSE, sep = "\t")
+  
+}
+
+pblapply(users[1:10], baseline.regrets)
+
+```
+
+```{r}
 
 # test
 # user = users[1]

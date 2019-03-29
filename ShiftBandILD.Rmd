@@ -82,9 +82,30 @@ data.test = as.data.frame(data.test)
 ```
 
 ```{r}
+########################################## ASPECTS ##########################################
+
+aspects <- vector(mode="list", length=3)
+names(aspects) <- c("Contemporaneity", "Locality", "Genre")
+aspects[[1]] <- c(5,6); aspects[[2]] <- 4; aspects[[3]] <- 7:ncol(artist.data)
+similarity.functions <- vector(mode="list", length=3)
+names(similarity.functions) <- c("Contemporaneity", "Locality", "Genre")
+similarity.functions[[1]] <- similarity.function.contemporaneity; similarity.functions[[2]] <- similarity.function.locality
+similarity.functions[[3]] <- similarity.function.genre
+
+#################### Calculate frequencies for IOF for type and Locality  ####################
+
+by.area = group_by(artist.data,area)
+freq.area = dplyr::summarise(by.area, total = n())
+
+```
+
+```{r}
 # Similarity and ILD functions
 
-coincidence = function(chosen, real){
+# real = real.scenario
+# chosen = chosen.scenario
+
+coincidence = function(real, chosen){
   if(length(chosen) == length(real)){
     sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
     #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
@@ -184,12 +205,9 @@ list.ILD = function(list.elements){
 
 # ShiftBand
 
-  # test
-  # history = data.train
-
   users = data.train$`user-id` %>% unique()
 
-   users = users[1:10] # sub-sample to test shiftband parameters
+  # users = users[1:10] # sub-sample to test shiftband parameters
 
   all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
                    sep = ",") 
@@ -285,6 +303,7 @@ one.user.shiftband.ild = function(user, history){
   
     day.history = user.history %>% filter(timestamp == day)
     ild.day = list.ILD(day.history$`artist-name`)
+    #real.scenario = ild.2.scenario(ild.day)
     real.scenario = ild.2.scenario.no(ild.day)
     linha = c(day, chosen.scenario,real.scenario) %>% as.numeric() %>% as.data.frame() %>% t()
     df = rbind(df, linha)
@@ -322,22 +341,6 @@ fwrite(all.results,
 
 ```
 
-```{r}
 
-# Baseline - previous day ILD
-
-# test
-# user = 7687
-
-baseline.regrets = function(user){
-  
-  scenarios = fread(paste0(address, "resultsshiftband2/shiftband.ild.daily.user", user,".txt"),
-        sep = ",", header = F)
-  # scenarios = 
-  
-  
-}
-
-```
 
 
