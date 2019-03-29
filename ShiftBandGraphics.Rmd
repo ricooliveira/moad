@@ -51,6 +51,10 @@ coincidence = function(chosen, real){
 
 # regret graphs
 
+calculate.daily.regret = function(day.index, mean.regret){
+  
+}
+
 # NDAYS = 20
 
 nm <- list.files(path=paste0(address, "resultsshiftband2"))
@@ -77,9 +81,10 @@ generate.regret.graphics = function(user.result){
   mean.regret = c()
   for(day in 1:nrow(regrets)){
     #if (day <= NDAYS){
-        mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
+        # mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day) # regrets mean 
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
     #} else {
-    #    mean.regret = c(mean.regret, sum(regrets$regret[(day-NDAYS):day]) / NDAYS)
+    #    mean.regret = c(mean.regret, sum(regrets$regret[(day-NDAYS):day]) / NDAYS) # consider only the last days
     #}
   }
   mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())

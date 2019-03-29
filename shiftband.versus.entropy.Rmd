@@ -49,24 +49,34 @@ users = data.train$`user-id` %>% unique()
 ```{r}
 
 # test
-# user = users[3]
+# user = users[1]
+
+#users = users[1:10]
 
 generate.user.graph.entropy.vs.shiftband = function(user){
   
   sb = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
+  #alpha = fread(paste0(address, "resultsshiftbandalpha/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
+  #beta = fread(paste0(address, "resultsshiftbandbeta/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
+  #gamma = fread(paste0(address, "resultsshiftbandgamma/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
+  
   etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
   regrets = cbind(sb, etp)  
-  regrets = regrets[,-3]
-  names(regrets) = c("day", "ShiftBand", "Entropy")
+  #regrets = cbind(sb, alpha, beta, gamma)  
+  #regrets = regrets[,c(-3, -5, -7)]
+  names(regrets) = c("day", "ShiftBand", "alpha", "beta", "gamma")
   
   g <- ggplot(regrets, aes(day)) +
     geom_line(aes(y = ShiftBand, colour = "ShiftBand")) +
     geom_line(aes(y = Entropy, colour = "Entropy"))
-  ggsave(paste0(address, "resultsregretgraphs/graph.shiftband.vs.entropy.daily.regret.user", user,".pdf"))
+    #geom_line(aes(y = alpha, colour = "alpha")) +
+    #geom_line(aes(y = beta, colour = "beta")) +
+    #geom_line(aes(y = gamma, colour = "gamma"))
+  ggsave(paste0(address, "resultsregretgraphs2/graph.shiftband.vs.entropy.daily.regret.weighted.user", user,".pdf"))
   
 }
 

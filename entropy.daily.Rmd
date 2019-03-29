@@ -143,8 +143,6 @@ median.entropy.genre = median(all.results$genre)
 
 ```{r}
 
-#### UNTESTED
-
 entropy.2.scenario = function(vec){
   result = c(0, 0, 0)
   if(vec[1] > median.entropy.contemporaneity){
@@ -200,8 +198,6 @@ coincidence = function(chosen, real){
 
 # regret graphs
 
-# NDAYS = 20
-
 nm <- list.files(path=paste0(address, "resultsentropy"))
 nm = nm[998:1994]
 
@@ -222,7 +218,8 @@ generate.regret.graphics = function(user.result){
   
   mean.regret = c()
   for(day in 1:nrow(regrets)){
-        mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day))
+        #mean.regret = c(mean.regret, sum(regrets$regret[1:day]) / day)
   }
   mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
   names(mean.regret) = c("day", "regret")
