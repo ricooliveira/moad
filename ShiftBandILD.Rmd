@@ -319,7 +319,7 @@ one.user.shiftband.ild = function(user, history){
   
   } 
   fwrite(df,
-           paste0(address,"resultsildpd/shiftband.ild.daily.user",user,".txt"), 
+           paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.ild.daily.user",user,".txt"), 
            col.names = FALSE, row.names = FALSE, sep = ",")
 
 }
