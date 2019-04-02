@@ -59,10 +59,10 @@ coincidence = function(real, chosen){
 
 ```{r}
 
-# Baseline - previous day ILD
+# Baseline - previous day ILD 
 
 # test
-# user = users[2]
+# user = users[1]
 
 baseline.regrets = function(user){
   
@@ -96,7 +96,43 @@ baseline.regrets = function(user){
   
 }
 
-pblapply(users[1:10], baseline.regrets)
+pblapply(users, baseline.regrets)
+
+```
+
+```{r}
+
+# Calculate regrets
+
+# test
+# user = users[1]
+
+calculate.regrets = function(user){
+  
+  scenarios = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.ild.daily.user", user,".txt"),
+        sep = ",", header = F)
+
+  day.regret = function(vec){
+    return(1 - coincidence(vec[2:4], vec[5:7]))
+  }
+  
+  regrets = cbind(scenarios$V1, apply(scenarios, 1, day.regret)) %>% as.data.frame()
+  names(regrets) = c("day", "regret")
+  
+  mean.regret = c()
+  for(day in 1:nrow(regrets)){
+        mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
+  }
+  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  names(mean.regret) = c("day", "regret")
+  
+  fwrite(mean.regret,
+         paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+         row.names = FALSE, col.names = FALSE, sep = "\t")
+  
+}
+
+pblapply(users, calculate.regrets)
 
 ```
 
@@ -109,7 +145,10 @@ pblapply(users[1:10], baseline.regrets)
 
 generate.user.graph.entropy.vs.shiftband = function(user){
   
-  sb = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
+  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  
+  sb01 = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
   #alpha = fread(paste0(address, "resultsshiftbandalpha/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
@@ -119,18 +158,24 @@ generate.user.graph.entropy.vs.shiftband = function(user){
   etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
-  regrets = cbind(sb, etp)  
+  ildpd = fread(paste0(address, "resultsildpd/ildpd.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  
+  regrets = cbind(sb, etp, ildpd, sb01)  
   #regrets = cbind(sb, alpha, beta, gamma)  
-  #regrets = regrets[,c(-3, -5, -7)]
-  names(regrets) = c("day", "ShiftBand", "alpha", "beta", "gamma")
+  regrets = regrets[,c(-3, -5, -7)]
+  names(regrets) = c("day", "ShiftBand", "Entropy", "ILDPD", "ShiftBand01")
   
   g <- ggplot(regrets, aes(day)) +
     geom_line(aes(y = ShiftBand, colour = "ShiftBand")) +
-    geom_line(aes(y = Entropy, colour = "Entropy"))
+    geom_line(aes(y = Entropy, colour = "Entropy")) + 
+    geom_line(aes(y = ILDPD, colour = "ILDPD")) +
+    geom_line(aes(y = ShiftBand01, colour = "ShiftBand01"))
+    
     #geom_line(aes(y = alpha, colour = "alpha")) +
     #geom_line(aes(y = beta, colour = "beta")) +
     #geom_line(aes(y = gamma, colour = "gamma"))
-  ggsave(paste0(address, "resultsregretgraphs2/graph.shiftband.vs.entropy.daily.regret.weighted.user", user,".pdf"))
+  ggsave(paste0(address, "plots_sb_etp_ildpd/graph.shiftband.vs.entropy.vs.ildpd.daily.regret.weighted.user", user,".pdf"))
   
 }
 

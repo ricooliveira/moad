@@ -82,24 +82,6 @@ data.test = as.data.frame(data.test)
 ```
 
 ```{r}
-########################################## ASPECTS ##########################################
-
-aspects <- vector(mode="list", length=3)
-names(aspects) <- c("Contemporaneity", "Locality", "Genre")
-aspects[[1]] <- c(5,6); aspects[[2]] <- 4; aspects[[3]] <- 7:ncol(artist.data)
-similarity.functions <- vector(mode="list", length=3)
-names(similarity.functions) <- c("Contemporaneity", "Locality", "Genre")
-similarity.functions[[1]] <- similarity.function.contemporaneity; similarity.functions[[2]] <- similarity.function.locality
-similarity.functions[[3]] <- similarity.function.genre
-
-#################### Calculate frequencies for IOF for type and Locality  ####################
-
-by.area = group_by(artist.data,area)
-freq.area = dplyr::summarise(by.area, total = n())
-
-```
-
-```{r}
 # Similarity and ILD functions
 
 # real = real.scenario
@@ -134,6 +116,7 @@ similarity.function.locality = function(data){
   }
   return(m)
 }
+
 
 similarity.function.contemporaneity = function(data){
   artistas = rownames(data)
@@ -198,6 +181,24 @@ list.ILD = function(list.elements){
             ILD(df[(aspects[[3]])], similarity.function.genre))
           )
 }
+
+```
+
+```{r}
+########################################## ASPECTS ##########################################
+
+aspects <- vector(mode="list", length=3)
+names(aspects) <- c("Contemporaneity", "Locality", "Genre")
+aspects[[1]] <- c(5,6); aspects[[2]] <- 4; aspects[[3]] <- 7:ncol(artist.data)
+similarity.functions <- vector(mode="list", length=3)
+names(similarity.functions) <- c("Contemporaneity", "Locality", "Genre")
+similarity.functions[[1]] <- similarity.function.contemporaneity; similarity.functions[[2]] <- similarity.function.locality
+similarity.functions[[3]] <- similarity.function.genre
+
+#################### Calculate frequencies for IOF for type and Locality  ####################
+
+by.area = group_by(artist.data,area)
+freq.area = dplyr::summarise(by.area, total = n())
 
 ```
 
@@ -304,7 +305,7 @@ one.user.shiftband.ild = function(user, history){
     day.history = user.history %>% filter(timestamp == day)
     ild.day = list.ILD(day.history$`artist-name`)
     #real.scenario = ild.2.scenario(ild.day)
-    real.scenario = ild.2.scenario.no(ild.day)
+    real.scenario = ild.2.scenario(ild.day)
     linha = c(day, chosen.scenario,real.scenario) %>% as.numeric() %>% as.data.frame() %>% t()
     df = rbind(df, linha)
     
@@ -319,7 +320,7 @@ one.user.shiftband.ild = function(user, history){
   
   } 
   fwrite(df,
-           paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.ild.daily.user",user,".txt"), 
+           paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.ild.daily.user",user,".txt"), 
            col.names = FALSE, row.names = FALSE, sep = ",")
 
 }
