@@ -113,9 +113,15 @@ pblapply(users, baseline.regrets)
 
 calculate.regrets = function(user){
   
-  scenarios = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.ild.daily.user", user,".txt"),
+  scenarios = fread(paste0(address, "resultsentropy/daily.scenario.user", user,".txt"),
         sep = ",", header = F)
-
+  
+  # hard scenarios
+  scenarios.hard = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
+        sep = "\t", header = F)
+  scenarios = cbind(scenarios, scenarios.hard)
+  scenarios = scenarios[,c(-5, -6, -7, -8)]
+  
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
   }
@@ -131,7 +137,7 @@ calculate.regrets = function(user){
   names(mean.regret) = c("day", "regret")
   
   fwrite(mean.regret,
-         paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+         paste0(address,"resultsentropy/hard.entropy.daily.regret.user", user, ".txt"),
          row.names = FALSE, col.names = FALSE, sep = "\t")
   
 }

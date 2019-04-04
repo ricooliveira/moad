@@ -1,0 +1,65 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
+if (!require("lsa")) {
+  install.packages("lsa", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(reshape)
+library(lsa)
+library(pbapply)
+
+```
+
+```{r}
+
+########################## CONSTANTS ##########################
+
+address <- "/local/Scripts/moad/"
+
+```
+
+```{r}
+
+########################## DATA LOAD ############################
+
+  users = data.train$`user-id` %>% unique()
+
+  all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+                   sep = ",") 
+  
+  # clean zeros and median
+  names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
+  all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
+  
+  summary.contemporaneity = summary(all.ilds.filtered$contemporaneity)
+  summary.locality = summary(all.ilds.filtered$locality)
+  summary.genre = summary(all.ilds.filtered$genre)
+
+  ild.2.scenario.hard = function(ilds) {
+    x = 0; y = 0; z = 0
+    if(ilds[1] >= summary.contemporaneity[3]) {x = 1}
+    if(ilds[2] >= summary.locality[3]) {y = 1}
+    if(ilds[3] >= summary.genre[3]) {z = 1}
+    return(c(x, y, z))
+  }
+
+  
+```
