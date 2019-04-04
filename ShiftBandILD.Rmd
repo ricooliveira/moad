@@ -225,7 +225,6 @@ freq.area = dplyr::summarise(by.area, total = n())
   #median.locality = median(all.ilds.filtered$locality)
   #median.genre = median(all.ilds.filtered$genre)
 
-
   random.probability.sort = function(p){
     total = sum(p)
     target = runif(1, 0, total)

@@ -18,11 +18,15 @@ if (!require("pbapply")) {
 if (!require("ggplot2")) {
   install.packages("data.table", repos="http://cran.rstudio.com/") 
 }
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
 
 library(dplyr)
 library(data.table)
 library(pbapply)
 library(ggplot2)
+library(reshape)
 
 ```
 
@@ -133,6 +137,62 @@ calculate.regrets = function(user){
 }
 
 pblapply(users, calculate.regrets)
+
+```
+
+```{r}
+
+# test
+# user = users[176]
+
+# regret.line = regrets$ShiftBand
+integrate.regrets = function(regret.line){
+  day.range = ((1:(length(regret.line))) - 1) /  ((length(regret.line) - 1))
+  integrate(approxfun(day.range , regret.line), 0, 1, subdivisions = 10000, stop.on.error = FALSE)$value
+}
+
+generate.line.areas = function(user){
+  
+  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  
+  if(sb %>% nrow() > 1){
+    sb01 = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    
+    etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    
+    ildpd = fread(paste0(address, "resultsildpd/ildpd.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    
+    regrets = cbind(sb, etp, ildpd, sb01)  
+    regrets = regrets[,c(-1, -3, -5, -7)]
+    names(regrets) = c("ShiftBand", "Entropy", "ILDPD", "ShiftBand01")
+    
+    apply(regrets, 2, integrate.regrets)
+    
+  }
+}
+
+regret.area = do.call(rbind, pbsapply(users, generate.line.areas))
+
+fwrite(regret.area %>% as.data.frame(), 
+       paste0(address, "resultsarea/regret.area.sb.sb01.entropy.ildpd.txt"),
+       sep = "\t",
+       row.names = F,
+       col.names = T)
+
+```
+
+```{r}
+
+regret.area.melted = melt(regret.area, measure.vars = c(1:regret.area %>% ncol()))
+names(regret.area.melted) = c("user", "method", "value")
+
+g = ggplot(regret.area.melted, aes(x = method, y = value, fill = method)) +
+  geom_boxplot() +
+  theme(axis.title.x=element_blank(), axis.title.y=element_blank())
 
 ```
 
