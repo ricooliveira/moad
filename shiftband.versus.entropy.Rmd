@@ -70,15 +70,15 @@ coincidence = function(real, chosen){
 
 baseline.regrets = function(user){
   
-  scenarios = fread(paste0(address, "resultsshiftband2/shiftband.ild.daily.user", user,".txt"),
-        sep = ",", header = F)
+  scenarios = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
+        sep = "\t", header = F)
   scenarios.ildpd = fread(paste0(address, "resultsildpd/shiftband.ild.daily.user", user,".txt"),
         sep = ",", header = F)
   scenarios.ildpd = scenarios.ildpd %>% select(V5,V6,V7) %>% slice(-n())
   
   linha = data.frame(V5 = sample(c(0,1), size = 1), V6 = sample(c(0,1), size = 1), V7 = sample(c(0,1), size = 1))
   scenarios.ildpd = bind_rows(linha, scenarios.ildpd)
-  scenarios.ildpd = cbind(scenarios[,1], scenarios.ildpd, scenarios[,c(5:7)])
+  scenarios.ildpd = cbind(scenarios[,1], scenarios.ildpd, scenarios[,c(2:4)])
   
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
@@ -95,7 +95,7 @@ baseline.regrets = function(user){
   names(mean.regret) = c("day", "regret")
   
   fwrite(mean.regret,
-         paste0(address,"resultsildpd/ildpd.daily.regret.user", user, ".txt"),
+         paste0(address,"resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
          row.names = FALSE, col.names = FALSE, sep = "\t")
   
 }
@@ -114,7 +114,7 @@ pblapply(users, baseline.regrets)
 calculate.regrets = function(user){
   
   scenarios = fread(paste0(address, "resultsentropy/daily.scenario.user", user,".txt"),
-        sep = ",", header = F)
+        sep = "\t", header = F)
   
   # hard scenarios
   scenarios.hard = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
@@ -163,13 +163,13 @@ generate.line.areas = function(user){
         sep = "\t", header = F)
   
   if(sb %>% nrow() > 1){
-    sb01 = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
+    sb01 = fread(paste0(address, "resultsshiftband2/hard.shiftband.daily.regret.user", user, ".txt"),
           sep = "\t", header = F)
     
-    etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
+    etp = fread(paste0(address, "resultsentropy/hard.entropy.daily.regret.user", user, ".txt"),
           sep = "\t", header = F)
     
-    ildpd = fread(paste0(address, "resultsildpd/ildpd.daily.regret.user", user, ".txt"),
+    ildpd = fread(paste0(address, "resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
           sep = "\t", header = F)
     
     regrets = cbind(sb, etp, ildpd, sb01)  
@@ -184,7 +184,7 @@ generate.line.areas = function(user){
 regret.area = do.call(rbind, pbsapply(users, generate.line.areas))
 
 fwrite(regret.area %>% as.data.frame(), 
-       paste0(address, "resultsarea/regret.area.sb.sb01.entropy.ildpd.txt"),
+       paste0(address, "resultsarea/hard.regret.area.sb.sb01.entropy.ildpd.txt"),
        sep = "\t",
        row.names = F,
        col.names = T)
