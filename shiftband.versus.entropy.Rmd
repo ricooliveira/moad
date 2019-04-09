@@ -106,6 +106,55 @@ pblapply(users, baseline.regrets)
 
 ```{r}
 
+# Baseline - several days ILD 
+
+# test
+# user = users[1]
+# days = 7
+
+baseline.regrets = function(user, days){
+  
+  scenarios = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
+        sep = "\t", header = F)
+  if(nrow(scenarios) > days){
+    
+    ilds = scenarios %>% select(V2, V3, V4)
+    ilds.fdays = ilds %>% slice((days+1) : n())
+    ilds.ldays = ilds %>% slice(1:(n()-days))
+    ilds.days = scenarios %>% select(V1) %>% slice((days+1) : n())
+    
+    scenarios.ild = cbind(ilds.days, ilds.fdays, ilds.ldays)
+    
+    day.regret = function(vec){
+      return(1 - coincidence(vec[2:4], vec[5:7]))
+    }
+    
+    regrets = cbind(user, apply(scenarios.ild, 1, day.regret)) %>% as.data.frame()
+    names(regrets) = c("day", "regret")
+    
+    mean.regret = c()
+    for(day in 1:nrow(regrets)){
+          mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
+    }
+    mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+    names(mean.regret) = c("day", "regret")
+    
+    fwrite(mean.regret,
+           paste0(address,"resultsildpd/hard.ildpd.", days,"days.daily.regret.user", user, ".txt"),
+           row.names = FALSE, col.names = FALSE, sep = "\t")
+  }
+}
+
+pblapply(users, baseline.regrets, 7)
+pblapply(users, baseline.regrets, 2)
+pblapply(users, baseline.regrets, 5)
+pblapply(users, baseline.regrets, 15)
+
+
+```
+
+```{r}
+
 # Calculate regrets
 
 # test
@@ -190,6 +239,74 @@ fwrite(regret.area %>% as.data.frame(),
        col.names = T)
 
 ```
+```{r}
+
+# users available in 15 days recommendation
+
+files <- list.files(path = paste0(address, "resultsildpd15days/"))
+
+# test
+# filename = files[1]
+
+clean.user = function(filename){
+  users = substring(filename, 36, nchar(filename) - 4)
+}
+
+users = clean.user(files)
+
+# test
+# user = users[1]
+
+# regret.line = regrets$ShiftBand
+integrate.regrets = function(regret.line){
+  day.range = ((1:(length(regret.line))) - 1) /  ((length(regret.line) - 1))
+  integrate(approxfun(day.range , regret.line), 0, 1, subdivisions = 10000, stop.on.error = FALSE)$value
+}
+
+generate.line.areas = function(user){
+  
+  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+  sb = cbind(sb, "ShiftBand")
+  
+  if(sb %>% nrow() > 16){
+    
+    ildpd = fread(paste0(address, "resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd = cbind(ildpd, "ILDPD")
+    ildpd2 = fread(paste0(address, "resultsildpd/hard.ildpd.2days.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd2 = cbind(ildpd2, "ILD-2")
+    ildpd5 = fread(paste0(address, "resultsildpd/hard.ildpd.5days.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd5 = cbind(ildpd5, "ILD-5")
+    ildpd7 = fread(paste0(address, "resultsildpd/hard.ildpd.7days.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd7 = cbind(ildpd7, "ILD-7")
+    ildpd15 = fread(paste0(address, "resultsildpd/hard.ildpd.15days.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd15 = cbind(ildpd15, "ILD-15")
+    
+    regrets = rbind(sb, ildpd, ildpd2, ildpd5, ildpd7, ildpd15)
+    
+    regrets = regrets[,-1]
+    names(regrets) = c("value", "method")
+    
+    apply(regrets, 2, integrate.regrets)
+    
+  }
+}
+
+regret.area = do.call(rbind, pbsapply(users, generate.line.areas))
+
+fwrite(regret.area %>% as.data.frame(), 
+       paste0(address, "resultsarea/hard.regret.area.sb.sb01.entropy.ildpd.txt"),
+       sep = "\t",
+       row.names = F,
+       col.names = T)
+
+```
+
 
 ```{r}
 
