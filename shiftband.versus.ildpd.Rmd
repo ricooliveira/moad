@@ -68,7 +68,7 @@ coincidence = function(real, chosen){
 # test
 # user = users[1]
 
-baseline.regrets = function(user){
+baseline.regrets = function(user, days){
   
   scenarios = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
         sep = "\t", header = F)
@@ -83,6 +83,15 @@ baseline.regrets = function(user){
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
   }
+  
+  freeze.days = floor(nrow(scenarios.ildpd) / 4 + 1)
+  new.columns = data.frame()
+  while(freeze.days < nrow(scenarios.ildpd)){
+    new.columns = rbind(cbind(rep(scenarios.ildpd[freeze.days,2], days), rep(scenarios.ildpd[freeze.days,3], days), rep(scenarios.ildpd[freeze.days,4], days)))
+    freeze.days = freeze.days + days
+  }
+  #for(i in freeze.days:nrow(scenarios.ildpd))
+  
   
   regrets = cbind(user, apply(scenarios.ildpd, 1, day.regret)) %>% as.data.frame()
   names(regrets) = c("day", "regret")
@@ -104,54 +113,6 @@ pblapply(users, baseline.regrets)
 
 ```
 
-```{r}
-
-# Baseline - several days ILD 
-
-# test
-# user = users[1]
-# days = 7
-
-baseline.regrets = function(user, days){
-  
-  scenarios = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
-        sep = "\t", header = F)
-  if(nrow(scenarios) > days){
-    
-    ilds = scenarios %>% select(V2, V3, V4)
-    ilds.fdays = ilds %>% slice((days+1) : n())
-    ilds.ldays = ilds %>% slice(1:(n()-days))
-    ilds.days = scenarios %>% select(V1) %>% slice((days+1) : n())
-    
-    scenarios.ild = cbind(ilds.days, ilds.fdays, ilds.ldays)
-    
-    day.regret = function(vec){
-      return(1 - coincidence(vec[2:4], vec[5:7]))
-    }
-    
-    regrets = cbind(user, apply(scenarios.ild, 1, day.regret)) %>% as.data.frame()
-    names(regrets) = c("day", "regret")
-    
-    mean.regret = c()
-    for(day in 1:nrow(regrets)){
-          mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
-    }
-    mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
-    names(mean.regret) = c("day", "regret")
-    
-    fwrite(mean.regret,
-           paste0(address,"resultsildpd/hard.ildpd.", days,"days.daily.regret.user", user, ".txt"),
-           row.names = FALSE, col.names = FALSE, sep = "\t")
-  }
-}
-
-pblapply(users, baseline.regrets, 7)
-pblapply(users, baseline.regrets, 2)
-pblapply(users, baseline.regrets, 5)
-pblapply(users, baseline.regrets, 15)
-
-
-```
 
 ```{r}
 
