@@ -31,8 +31,8 @@ library(pbapply)
 ########################## CONSTANTS ##########################
 
 ALPHA = 0.1
-BETA = 0.5
-GAMMA = 0.5
+BETA = 0.1
+GAMMA = 0.1
 ETA = 0.1
 K = 8 # Number of scenarios
 TRIALS = 10 
@@ -85,12 +85,24 @@ data.test = as.data.frame(data.test)
 # real = real.scenario
 # chosen = chosen.scenario
 
+# coincidence = function(real, chosen){
+#   if(length(chosen) == length(real)){
+#     sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
+#     #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+#     sum.vec = (sum.vec == 1) %>% as.numeric()
+#     return((length(sum.vec) - sum(sum.vec)) / length(sum.vec))
+#   }
+# }
+
 coincidence = function(real, chosen){
   if(length(chosen) == length(real)){
-    sum.vec = chosen %>% as.numeric() + real %>% as.numeric()
-    #sum.vec = ((sum.vec %% 2) - 1) %>% abs()
-    sum.vec = (sum.vec == 1) %>% as.numeric()
-    return((length(sum.vec) - sum(sum.vec)) / length(sum.vec))
+    sum.vec = (chosen %>% as.numeric() + real %>% as.numeric())
+    sum.vec = ((sum.vec %% 2) - 1) %>% abs()
+    if (sum(sum.vec) == length(chosen)) {
+      return(1)
+    } else {
+      return(0)
+    }
   }
 }
 
@@ -302,7 +314,7 @@ one.user.shiftband.ild = function(user, history){
     day.history = user.history %>% filter(timestamp == day)
     ild.day = list.ILD(day.history$`artist-name`)
     #real.scenario = ild.2.scenario(ild.day)
-    real.scenario = ild.2.scenario(ild.day)
+    real.scenario = ild.2.scenario.no(ild.day)
     linha = c(day, chosen.scenario,real.scenario) %>% as.numeric() %>% as.data.frame() %>% t()
     df = rbind(df, linha)
     
@@ -317,7 +329,7 @@ one.user.shiftband.ild = function(user, history){
   
   } 
   fwrite(df,
-           paste0(address,"resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.ild.daily.user",user,".txt"), 
+           paste0(address,"resultsshiftbandall/shiftband.all.ild.daily.user",user,".txt"), 
            col.names = FALSE, row.names = FALSE, sep = ",")
 
 }

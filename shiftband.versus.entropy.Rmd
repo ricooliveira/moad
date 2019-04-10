@@ -208,7 +208,7 @@ integrate.regrets = function(regret.line){
 
 generate.line.areas = function(user){
   
-  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/hard.shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
   if(sb %>% nrow() > 1){
@@ -265,7 +265,7 @@ integrate.regrets = function(regret.line){
 
 generate.line.areas = function(user){
   
-  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/hard.shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   sb.in = integrate.regrets(sb$V2)
   
@@ -307,7 +307,7 @@ fwrite(regret.area %>% as.data.frame(),
 
 ```{r}
 
-regret.area.melted = melt(regret.area, measure.vars = c(1:(regret.area %>% ncol())))
+regret.area.melted = melt(regret.area %>% as.data.frame(), measure.vars = c(1:(regret.area %>% ncol())))
 names(regret.area.melted) = c("method", "value")
 
 g = ggplot(regret.area.melted, aes(x = method, y = value, fill = method)) +

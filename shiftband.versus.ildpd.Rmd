@@ -67,6 +67,7 @@ coincidence = function(real, chosen){
 
 # test
 # user = users[1]
+# days = 7
 
 baseline.regrets = function(user, days){
   
@@ -79,19 +80,36 @@ baseline.regrets = function(user, days){
   linha = data.frame(V5 = sample(c(0,1), size = 1), V6 = sample(c(0,1), size = 1), V7 = sample(c(0,1), size = 1))
   scenarios.ildpd = bind_rows(linha, scenarios.ildpd)
   scenarios.ildpd = cbind(scenarios[,1], scenarios.ildpd, scenarios[,c(2:4)])
+  names(scenarios.ildpd) = c("day", "P1", "P2", "P3", "R1", "R2", "R3")
   
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
   }
   
-  freeze.days = floor(nrow(scenarios.ildpd) / 4 + 1)
-  new.columns = data.frame()
-  while(freeze.days < nrow(scenarios.ildpd)){
-    new.columns = rbind(cbind(rep(scenarios.ildpd[freeze.days,2], days), rep(scenarios.ildpd[freeze.days,3], days), rep(scenarios.ildpd[freeze.days,4], days)))
-    freeze.days = freeze.days + days
-  }
-  #for(i in freeze.days:nrow(scenarios.ildpd))
+  # break into pieces
+  train.part = 4
+  freeze.days = ceiling(nrow(scenarios.ildpd) / train.part)
+  left = scenarios.ildpd %>% select(1)
+  right = scenarios.ildpd %>% select(5:7)
+  scenarios.ildpd.cut = scenarios.ildpd %>% select(c(2:4))
+  top = scenarios.ildpd.cut %>% slice(1:freeze.days)
+  scenarios.ildpd.cut = scenarios.ildpd.cut %>% slice((freeze.days+1):n())
   
+  # generate freezed scenarios
+  df = data.frame()
+  for(i in 1:(ceiling(nrow(scenarios.ildpd.cut) / days)) - 1){
+    df = rbind(df, 
+               cbind(rep(scenarios.ildpd.cut[i * days + 1, 1], days) %>% as.data.frame() %>% t(), 
+                     rep(scenarios.ildpd.cut[i * days + 1, 2], days) %>% as.data.frame() %>% t(), 
+                     rep(scenarios.ildpd.cut[i * days + 1, 3], days) %>% as.data.frame() %>% t()))
+  }
+  df = df %>% slice(1:nrow(scenarios.ildpd.cut))
+  names(df) = c("P1", "P2", "P3")
+  
+  # assemble back
+  
+  df = rbind(top, df)
+  scenarios.ildpd = cbind(left, df, right)
   
   regrets = cbind(user, apply(scenarios.ildpd, 1, day.regret)) %>% as.data.frame()
   names(regrets) = c("day", "regret")
@@ -104,12 +122,12 @@ baseline.regrets = function(user, days){
   names(mean.regret) = c("day", "regret")
   
   fwrite(mean.regret,
-         paste0(address,"resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
+         paste0(address,"resultsildpd/hard.ildpd.freeze25%.", days, "days.daily.regret.user", user, ".txt"),
          row.names = FALSE, col.names = FALSE, sep = "\t")
   
 }
 
-pblapply(users, baseline.regrets)
+pblapply(users, baseline.regrets, 14)
 
 ```
 
@@ -121,7 +139,7 @@ pblapply(users, baseline.regrets)
 # test
 # user = users[1]
 
-calculate.regrets = function(user){
+calculate.regrets = function(user, days){
   
   scenarios = fread(paste0(address, "resultsentropy/daily.scenario.user", user,".txt"),
         sep = "\t", header = F)
@@ -131,12 +149,38 @@ calculate.regrets = function(user){
         sep = "\t", header = F)
   scenarios = cbind(scenarios, scenarios.hard)
   scenarios = scenarios[,c(-5, -6, -7, -8)]
+  names(scenarios) = c("day", "P1", "P2", "P3", "R1", "R2", "R3")
   
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
   }
   
-  regrets = cbind(scenarios$V1, apply(scenarios, 1, day.regret)) %>% as.data.frame()
+  # break into pieces
+  train.part = 4
+  freeze.days = ceiling(nrow(scenarios) / train.part)
+  left = scenarios %>% select(1)
+  right = scenarios %>% select(5:7)
+  scenarios.cut = scenarios %>% select(c(2:4))
+  top = scenarios.cut %>% slice(1:freeze.days)
+  scenarios.cut = scenarios.cut %>% slice((freeze.days+1):n())
+  
+  # generate freezed scenarios
+  df = data.frame()
+  for(i in 1:(ceiling(nrow(scenarios.cut) / days)) - 1){
+    df = rbind(df, 
+               cbind(rep(scenarios.cut[i * days + 1, 1], days) %>% as.data.frame() %>% t(), 
+                     rep(scenarios.cut[i * days + 1, 2], days) %>% as.data.frame() %>% t(), 
+                     rep(scenarios.cut[i * days + 1, 3], days) %>% as.data.frame() %>% t()))
+  }
+  df = df %>% slice(1:nrow(scenarios.cut))
+  names(df) = c("P1", "P2", "P3")
+  
+  # assemble back
+  
+  df = rbind(top, df)
+  scenarios = cbind(left, df, right)
+  
+  regrets = cbind(scenarios$day, apply(scenarios, 1, day.regret)) %>% as.data.frame()
   names(regrets) = c("day", "regret")
   
   mean.regret = c()
@@ -147,12 +191,12 @@ calculate.regrets = function(user){
   names(mean.regret) = c("day", "regret")
   
   fwrite(mean.regret,
-         paste0(address,"resultsentropy/hard.entropy.daily.regret.user", user, ".txt"),
+         paste0(address,"resultsshiftbandfreeze/hard.shiftband.freeze.", days, "days.daily.regret.user", user, ".txt"),
          row.names = FALSE, col.names = FALSE, sep = "\t")
   
 }
 
-pblapply(users, calculate.regrets)
+pblapply(users, calculate.regrets, 14)
 
 ```
 
@@ -169,96 +213,32 @@ integrate.regrets = function(regret.line){
 
 generate.line.areas = function(user){
   
-  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+  sb.freeze.7days = fread(paste0(address, "resultsshiftbandfreeze/hard.shiftband.freeze.7days.daily.regret.user", user, ".txt"),
         sep = "\t", header = F)
   
   if(sb %>% nrow() > 1){
-    sb01 = fread(paste0(address, "resultsshiftband2/hard.shiftband.daily.regret.user", user, ".txt"),
+    
+    sb.freeze.14days = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/hard.shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
+        sep = "\t", header = F)
+    ildpd.freeze.7days = fread(paste0(address, "resultsildpd/hard.ildpd.freeze25%.7days.daily.regret.user", user, ".txt"),
+          sep = "\t", header = F)
+    ildpd.freeze.14days = fread(paste0(address, "resultsildpd/hard.ildpd.freeze25%.14days.daily.regret.user", user, ".txt"),
           sep = "\t", header = F)
     
-    etp = fread(paste0(address, "resultsentropy/hard.entropy.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
     
-    ildpd = fread(paste0(address, "resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    
-    regrets = cbind(sb, etp, ildpd, sb01)  
+    regrets = cbind(sb.freeze.7days, sb.freeze.14days, ildpd.freeze.7days, ildpd.freeze.14days)  
     regrets = regrets[,c(-1, -3, -5, -7)]
-    names(regrets) = c("ShiftBand", "Entropy", "ILDPD", "ShiftBand01")
+    names(regrets) = c("ShiftBand7", "ShiftBand14", "ILDPD7", "ILDPD14")
     
     apply(regrets, 2, integrate.regrets)
     
   }
 }
 
-regret.area = do.call(rbind, pbsapply(users, generate.line.areas))
+regret.area = pbsapply(users, generate.line.areas) %>% t()
 
 fwrite(regret.area %>% as.data.frame(), 
-       paste0(address, "resultsarea/hard.regret.area.sb.sb01.entropy.ildpd.txt"),
-       sep = "\t",
-       row.names = F,
-       col.names = T)
-
-```
-```{r}
-
-# users available in 15 days recommendation
-
-files <- list.files(path = paste0(address, "resultsildpd15days/"))
-
-# test
-# filename = files[1]
-
-clean.user = function(filename){
-  users = substring(filename, 36, nchar(filename) - 4)
-}
-
-users = clean.user(files)
-
-# test
-# user = users[1]
-
-# regret.line = sb$V2
-integrate.regrets = function(regret.line){
-  day.range = ((1:(length(regret.line))) - 1) /  ((length(regret.line) - 1))
-  integrate(approxfun(day.range , regret.line %>% as.list()), 0, 1, subdivisions = 10000, stop.on.error = FALSE)$value
-}
-
-generate.line.areas = function(user){
-  
-  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
-        sep = "\t", header = F)
-  sb.in = integrate.regrets(sb$V2)
-  
-  if(sb %>% nrow() > 16){
-    
-    ildpd = fread(paste0(address, "resultsildpd/hard.ildpd.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    ildpd.in = integrate.regrets(ildpd$V2)
-    ildpd2 = fread(paste0(address, "resultsildpd/hard.ildpd.2days.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    ildpd2.in = integrate.regrets(ildpd2$V2)
-    ildpd5 = fread(paste0(address, "resultsildpd/hard.ildpd.5days.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    ildpd5.in = integrate.regrets(ildpd5$V2)
-    ildpd7 = fread(paste0(address, "resultsildpd/hard.ildpd.7days.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    ildpd7.in = integrate.regrets(ildpd7$V2)
-    ildpd15 = fread(paste0(address, "resultsildpd/hard.ildpd.15days.daily.regret.user", user, ".txt"),
-          sep = "\t", header = F)
-    ildpd15.in = integrate.regrets(ildpd15$V2)
-    
-    regrets = c(sb.in, ildpd.in, ildpd2.in, ildpd5.in, ildpd7.in, ildpd15.in)
-    
-  }
-}
-
-regret.area = do.call(rbind, pbsapply(users, generate.line.areas))
-regret.area = regret.area %>% as.data.frame()
-names(regret.area) = c("ShiftBand", "ILDPD", "ILD-2", "ILD-5", "ILD-7", "ILD-15")
-
-fwrite(regret.area %>% as.data.frame(), 
-       paste0(address, "resultsarea/hard.regret.area.sb.ildpd.severaldays.txt"),
+       paste0(address, "resultsarea/hard.regret.area.sbfreeze.ildpdfreeze.txt"),
        sep = "\t",
        row.names = F,
        col.names = T)
@@ -266,9 +246,10 @@ fwrite(regret.area %>% as.data.frame(),
 ```
 
 
+
 ```{r}
 
-regret.area.melted = melt(regret.area, measure.vars = c(1:(regret.area %>% ncol())))
+regret.area.melted = melt(regret.area %>% as.data.frame(), measure.vars = c(1:(regret.area %>% ncol())))
 names(regret.area.melted) = c("method", "value")
 
 g = ggplot(regret.area.melted, aes(x = method, y = value, fill = method)) +
@@ -277,52 +258,5 @@ g = ggplot(regret.area.melted, aes(x = method, y = value, fill = method)) +
 g
 
 ggsave(paste0(address, "resultsarea/plot.shiftband.ildpd.severaldays.pdf"))
-```
-
-```{r}
-
-# test
-# user = users[1]
-
-#users = users[1:10]
-
-generate.user.graph.entropy.vs.shiftband = function(user){
-  
-  sb = fread(paste0(address, "resultsshiftbandalpha01beta05gamma05/shiftband.alpha01.beta05.gamma05.daily.regret.user", user, ".txt"),
-        sep = "\t", header = F)
-  
-  sb01 = fread(paste0(address, "resultsshiftband2/shiftband.daily.regret.user", user, ".txt"),
-        sep = "\t", header = F)
-  
-  #alpha = fread(paste0(address, "resultsshiftbandalpha/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
-  #beta = fread(paste0(address, "resultsshiftbandbeta/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
-  #gamma = fread(paste0(address, "resultsshiftbandgamma/shiftband.daily.regret.user", user, ".txt"), sep = "\t", header = F)
-  
-  etp = fread(paste0(address, "resultsentropy/entropy.daily.regret.user", user, ".txt"),
-        sep = "\t", header = F)
-  
-  ildpd = fread(paste0(address, "resultsildpd/ildpd.daily.regret.user", user, ".txt"),
-        sep = "\t", header = F)
-  
-  regrets = cbind(sb, etp, ildpd, sb01)  
-  #regrets = cbind(sb, alpha, beta, gamma)  
-  regrets = regrets[,c(-3, -5, -7)]
-  names(regrets) = c("day", "ShiftBand", "Entropy", "ILDPD", "ShiftBand01")
-  
-  g <- ggplot(regrets, aes(day)) +
-    geom_line(aes(y = ShiftBand, colour = "ShiftBand")) +
-    geom_line(aes(y = Entropy, colour = "Entropy")) + 
-    geom_line(aes(y = ILDPD, colour = "ILDPD")) +
-    geom_line(aes(y = ShiftBand01, colour = "ShiftBand01"))
-    
-    #geom_line(aes(y = alpha, colour = "alpha")) +
-    #geom_line(aes(y = beta, colour = "beta")) +
-    #geom_line(aes(y = gamma, colour = "gamma"))
-  ggsave(paste0(address, "plots_sb_etp_ildpd/graph.shiftband.vs.entropy.vs.ildpd.daily.regret.weighted.user", user,".pdf"))
-  
-}
-
-pblapply(users, generate.user.graph.entropy.vs.shiftband)
-
 ```
 
