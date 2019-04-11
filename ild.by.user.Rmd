@@ -71,6 +71,17 @@ ild.2.scenario.hard = function(ilds) {
   return(c(x, y, z) %>% as.data.frame())
 }
 
+ild.2.scenario = function(ilds) {
+  x = 0.5; y = 0.5; z = 0.5
+  if(ilds[1] >= summary.contemporaneity[5]) {x = 1}
+  if(ilds[1] <= summary.contemporaneity[2]) {x = 0}
+  if(ilds[2] >= summary.locality[5]) {y = 1}
+  if(ilds[2] <= summary.locality[2]) {y = 0}
+  if(ilds[3] >= summary.genre[5]) {z = 1}
+  if(ilds[3] <= summary.genre[2]) {z = 0}
+  return(c(x, y, z))
+}
+
 # test
 # user = 7687
 
@@ -79,18 +90,11 @@ generate.scenario.by.ild = function(user){
   names(user.ilds) = c("day", "contemporaneity", "locality", "genre")
   days = user.ilds$day
   user.ilds = user.ilds[,-1]
-  res = do.call(cbind, apply(user.ilds, 1, ild.2.scenario.hard)) %>% t()
-  res = cbind(days, res) %>% as.data.frame()
+  res = apply(user.ilds, 1, ild.2.scenario) %>% t() %>% as.data.frame()
+  res = cbind(days, res)
   fwrite(res, paste0(address, "results/daily.propensity.scenario.user", user, ".txt"), sep = "\t", row.names = F, col.names = F)
 }
 
 pblapply(users, generate.scenario.by.ild)
 
 ```
-
-```{r}
-
-
-
-```
-

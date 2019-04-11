@@ -145,52 +145,56 @@ calculate.regrets = function(user, days){
         sep = "\t", header = F)
   
   # hard scenarios
-  scenarios.hard = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
-        sep = "\t", header = F)
-  scenarios = cbind(scenarios, scenarios.hard)
-  scenarios = scenarios[,c(-5, -6, -7, -8)]
+  # scenarios.hard = fread(paste0(address, "results/daily.propensity.scenario.user", user,".txt"),
+  #       sep = "\t", header = F)
+  # scenarios = cbind(scenarios, scenarios.hard)
+  # scenarios = scenarios[,c(-5, -6, -7, -8)]
   names(scenarios) = c("day", "P1", "P2", "P3", "R1", "R2", "R3")
   
   day.regret = function(vec){
     return(1 - coincidence(vec[2:4], vec[5:7]))
   }
   
-  # break into pieces
-  train.part = 4
-  freeze.days = ceiling(nrow(scenarios) / train.part)
-  left = scenarios %>% select(1)
-  right = scenarios %>% select(5:7)
-  scenarios.cut = scenarios %>% select(c(2:4))
-  top = scenarios.cut %>% slice(1:freeze.days)
-  scenarios.cut = scenarios.cut %>% slice((freeze.days+1):n())
-  
-  # generate freezed scenarios
-  df = data.frame()
-  for(i in 1:(ceiling(nrow(scenarios.cut) / days)) - 1){
-    df = rbind(df, 
-               cbind(rep(scenarios.cut[i * days + 1, 1], days) %>% as.data.frame() %>% t(), 
-                     rep(scenarios.cut[i * days + 1, 2], days) %>% as.data.frame() %>% t(), 
-                     rep(scenarios.cut[i * days + 1, 3], days) %>% as.data.frame() %>% t()))
-  }
-  df = df %>% slice(1:nrow(scenarios.cut))
-  names(df) = c("P1", "P2", "P3")
-  
-  # assemble back
-  
-  df = rbind(top, df)
-  scenarios = cbind(left, df, right)
+  # # break into pieces
+  # train.part = 4
+  # freeze.days = ceiling(nrow(scenarios) / train.part)
+  # left = scenarios %>% select(1)
+  # right = scenarios %>% select(5:7)
+  # scenarios.cut = scenarios %>% select(c(2:4))
+  # top = scenarios.cut %>% slice(1:freeze.days)
+  # scenarios.cut = scenarios.cut %>% slice((freeze.days+1):n())
+  # 
+  # # generate freezed scenarios
+  # df = data.frame()
+  # for(i in 1:(ceiling(nrow(scenarios.cut) / days)) - 1){
+  #   df = rbind(df, 
+  #              cbind(rep(scenarios.cut[i * days + 1, 1], days) %>% as.data.frame() %>% t(), 
+  #                    rep(scenarios.cut[i * days + 1, 2], days) %>% as.data.frame() %>% t(), 
+  #                    rep(scenarios.cut[i * days + 1, 3], days) %>% as.data.frame() %>% t()))
+  # }
+  # df = df %>% slice(1:nrow(scenarios.cut))
+  # names(df) = c("P1", "P2", "P3")
+  # 
+  # # assemble back
+  # 
+  # df = rbind(top, df)
+  # scenarios = cbind(left, df, right)
   
   regrets = cbind(scenarios$day, apply(scenarios, 1, day.regret)) %>% as.data.frame()
   names(regrets) = c("day", "regret")
   
-  mean.regret = c()
-  for(day in 1:nrow(regrets)){
-        mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
-  }
-  mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
-  names(mean.regret) = c("day", "regret")
+  # mean.regret = c()
+  # for(day in 1:nrow(regrets)){
+  #       mean.regret = c(mean.regret, sum(regrets$regret[1:day] * c(1:day)) / sum(1:day)) # weighted average in relation to position in timeline
+  # }
+  # mean.regret = cbind(regrets$day, mean.regret %>% as.data.frame())
+  # names(mean.regret) = c("day", "regret")
   
-  fwrite(mean.regret,
+  # fwrite(mean.regret,
+  #        paste0(address,"resultsshiftbandfreeze/hard.shiftband.freeze.", days, "days.daily.regret.user", user, ".txt"),
+  #        row.names = FALSE, col.names = FALSE, sep = "\t")
+
+  fwrite(regrets,
          paste0(address,"resultsshiftbandfreeze/hard.shiftband.freeze.", days, "days.daily.regret.user", user, ".txt"),
          row.names = FALSE, col.names = FALSE, sep = "\t")
   
