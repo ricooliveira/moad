@@ -22,6 +22,12 @@ library(text2vec)
 
 ```{r}
 
+address <- "/local/Scripts/moad/"
+
+```
+
+```{r}
+
   format_vectors = function(vec, doc_label){
       vec = vec %>% as_data_frame() 
       vec$count = 1
@@ -29,9 +35,9 @@ library(text2vec)
       return(vec)
   }
   
-  user.2.dtm <- function(u, data){
-    vec = filter(data, userid == u) %>% select(artistname) %>% as.vector() %>% unique()
-    return(format_vectors(vec, u))
+  day.2.dtm <- function(day, data){
+    vec = filter(data, timestamp == day) %>% select(artistname) %>% as.vector() %>% unique()
+    return(format_vectors(vec, day))
   }
   
   genre.2.dtm <- function(g, data){
@@ -175,11 +181,8 @@ LFM = as.data.frame(LFM)
 names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
 LFM$artistname = str_replace_all(LFM$artistname, " ", "_")
 
-total.plays = LFM %>% group_by(artistname) %>% count("artistname")
-artists.min5 = filter(total.plays, freq >= 5) %>% select(artistname)
-
-artist.metadata = inner_join(artist.metadata, artists.min5)
-LFM = inner_join(LFM, artists.min5)
+LFM$timestamp = LFM$timestamp / (60*60*24) # timestamp em segundos transformado pra dias
+LFM$timestamp = floor(LFM$timestamp) 
 
 model = read.binary.vectors("data/artistas_embeddings.bin")
 we = model
@@ -195,31 +198,48 @@ names(artists.by.genre) = c("artistname", "genre")
 artists.by.genre$artistname = str_replace_all(artists.by.genre$artistname, " ", "_")
 
 users = LFM$userid %>% unique()
-LFM.compact = LFM %>% select(c(userid, artistname))
-user.formatted.vectors = do.call(rbind, pblapply(users, user.2.dtm, LFM.compact))
-  
+
+# test
+# user = 7687
+
 genres = unique(artists.by.genre$genre)
 genre.formatted.vectors = do.call(rbind, pblapply(genres, genre.2.dtm, artists.by.genre))
 
-dtm = rbind(user.formatted.vectors, genre.formatted.vectors) %>% cast_sparse(document, artistname, count)
-
-targets=dtm[1:(users %>% length()),]
-features=dtm[(users %>% length()+1):(genres %>% length()+users %>% length()),]
+user.genre.daily = function(user){
+  LFM.compact = LFM %>% select(c(userid, artistname, timestamp)) %>% filter(user == userid)
+  days = unique(LFM.compact$timestamp)
+  days.formatted.vectors = do.call(rbind, pblapply(days, day.2.dtm, LFM.compact))
   
-rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
-wmd.genre = rwmd$dist2(targets, features)
+  dtm = rbind(days.formatted.vectors, genre.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets=dtm[1:(days %>% length()),]
+  features=dtm[(days %>% length()+1):((genres %>% length()) + (days %>% length())),]
 
-wmd.genre = t(apply(wmd.genre, 1, sort, decreasing = T)) %>% as.data.frame()
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.genre = rwmd$dist2(targets, features)
 
-fwrite(wmd.genre,
-       "data/wmd.genre.txt",
+  wmd.genre = t(apply(wmd.genre, 1, sort, decreasing = T)) %>% as.data.frame()
+
+  fwrite(wmd.genre,
+       paste0(address, "data/wmd/wmd.genre.user", user,".txt"),
        sep = "\t",
        row.names = F, col.names = F)
+}
+
+pblapply(users, user.genre.daily)
+
+  
+
+
+
+  
+
 
 ```
 
 ```{r}
 #localities group
+
 localities = as.list(unique(artist.metadata$area))
 artists.by.locality = select(artist.metadata, c(artistname, area))
 names(artists.by.locality) = c("artistname", "locality")
@@ -227,20 +247,28 @@ names(artists.by.locality) = c("artistname", "locality")
 localities = unique(artists.by.locality$locality)
 locality.formatted.vectors = do.call(rbind, pblapply(localities, locality.2.dtm, artists.by.locality))
 
-dtm = rbind(user.formatted.vectors, locality.formatted.vectors) %>% cast_sparse(document, artistname, count)
-
-targets=dtm[1:(users %>% length()),]
-features=dtm[(users %>% length()+1):(localities %>% length()+users %>% length()),]
+user.locality.daily = function(user){
+  LFM.compact = LFM %>% select(c(userid, artistname, timestamp)) %>% filter(user == userid)
+  days = unique(LFM.compact$timestamp)
+  days.formatted.vectors = do.call(rbind, pblapply(days, day.2.dtm, LFM.compact))
   
-rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
-wmd.localities = rwmd$dist2(targets, features)
+  dtm = rbind(days.formatted.vectors, locality.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets = dtm[1:(days %>% length()),]
+  features = dtm[(days %>% length()+1):((localities %>% length()) + (days %>% length())),]
 
-wmd.localities = t(apply( wmd.localities, 1, sort, decreasing = T)) %>% as.data.frame()
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.localities = rwmd$dist2(targets, features)
 
-fwrite(wmd.localities,
-       "data/wmd.locality.txt",
+  wmd.localities = t(apply( wmd.localities, 1, sort, decreasing = T)) %>% as.data.frame()
+
+  fwrite(wmd.localities,
+       paste0(address, "data/wmd/wmd.locality.user", user,".txt"),
        sep = "\t",
        row.names = F, col.names = F)
+}
+
+pblapply(users, user.locality.daily)
 
 ```
 
@@ -255,20 +283,29 @@ artists.by.contemporaneity = read_csv("data/artists_by_contemporaneity.csv")
 decades = unique(artists.by.contemporaneity$decade)
 decade.formatted.vectors = do.call(rbind, pblapply(decades, contemporaneity.2.dtm, artists.by.contemporaneity))
 
-dtm = rbind(user.formatted.vectors, decade.formatted.vectors) %>% cast_sparse(document, artistname, count)
-
-targets=dtm[1:(users %>% length()),]
-features=dtm[(users %>% length()+1):(decades %>% length()+users %>% length()),]
+user.contemporaneity.daily = function(user){
+  LFM.compact = LFM %>% select(c(userid, artistname, timestamp)) %>% filter(user == userid)
+  days = unique(LFM.compact$timestamp)
+  days.formatted.vectors = do.call(rbind, pblapply(days, day.2.dtm, LFM.compact))
   
-rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
-wmd.contemporaneity = rwmd$dist2(targets, features)
+  dtm = rbind(days.formatted.vectors, decade.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets=dtm[1:(days %>% length()),]
+  features=dtm[(days %>% length()+1):((decades %>% length()) + (days %>% length())),]
 
-wmd.contemporaneity = t(apply(wmd.contemporaneity, 1, sort, decreasing = T)) %>% as.data.frame()
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.contemporaneity = rwmd$dist2(targets, features)
 
-fwrite(wmd.contemporaneity %>% as.list(),
-       "data/wmd.contemporaneity.txt",
+  wmd.contemporaneity = t(apply(wmd.contemporaneity, 1, sort, decreasing = T)) %>% as.data.frame()
+
+  fwrite(wmd.contemporaneity,
+       paste0(address, "data/wmd/wmd.contemporaneity.user", user,".txt"),
        sep = "\t",
        row.names = F, col.names = F)
+}
+
+pblapply(users, user.contemporaneity.daily)
+
 
 ```
 
@@ -305,29 +342,39 @@ differential.entropy = function(data){
   .jcall(teCalc,"D","computeAverageLocalOfObservations")
 }
 
-diff.entropy.contemporaneity = apply(wmd.contemporaneity %>% as.matrix(), 1, differential.entropy)
-diff.entropy.locality = apply(wmd.locality %>% as.matrix(), 1, differential.entropy)
-diff.entropy.genre = apply(wmd.genre %>% as.matrix(), 1, differential.entropy)
+user.propensity.diffentropy = function(user){
 
-median.entropy.contemporaneity = median(diff.entropy.contemporaneity)
-median.entropy.locality = median(diff.entropy.locality)
-median.entropy.genre = median(diff.entropy.genre)
+  wmd.contemporaneity = fread(paste0(address, "data/wmd.contemporaneity.user", user, ".txt"),
+                            sep = "\t", 
+                            na.strings = "")
 
-affinity.contemporaneity = (diff.entropy.contemporaneity > median.entropy.contemporaneity) %>% as.numeric()
-affinity.locality = (diff.entropy.locality > median.entropy.locality) %>% as.numeric()
-affinity.genre = (diff.entropy.genre > median.entropy.genre) %>% as.numeric()
+  wmd.locality = fread(paste0(address, "data/wmd.locality.user", user, ".txt"),
+                            sep = "\t", 
+                            na.strings = "")
 
-propensity.diff.entropy = data.frame(users = users, 
-                                     contemporaneity = affinity.contemporaneity,
-                                     locality = affinity.locality,
-                                     genre = affinity.genre)
+  wmd.genre = fread(paste0(address, "data/wmd.genre.user", user, ".txt"),
+                            sep = "\t", 
+                            na.strings = "")
 
-fwrite(propensity.diff.entropy,
-       "data/user.propensity.word2vec.diffentropy.gaussian.txt",
-       sep = "\t",
-       row.names = F, col.names = F)
-```
-
-```{r}
-
+  diff.entropy.contemporaneity = apply(wmd.contemporaneity %>% as.matrix(), 1, differential.entropy)
+  diff.entropy.locality = apply(wmd.locality %>% as.matrix(), 1, differential.entropy)
+  diff.entropy.genre = apply(wmd.genre %>% as.matrix(), 1, differential.entropy)
+  
+  median.entropy.contemporaneity = median(diff.entropy.contemporaneity)
+  median.entropy.locality = median(diff.entropy.locality)
+  median.entropy.genre = median(diff.entropy.genre)
+  
+  affinity.contemporaneity = (diff.entropy.contemporaneity > median.entropy.contemporaneity) %>% as.numeric()
+  affinity.locality = (diff.entropy.locality > median.entropy.locality) %>% as.numeric()
+  affinity.genre = (diff.entropy.genre > median.entropy.genre) %>% as.numeric()
+  
+  propensity.diff.entropy = data.frame(contemporaneity = affinity.contemporaneity,
+                                       locality = affinity.locality,
+                                       genre = affinity.genre)
+  
+  fwrite(propensity.diff.entropy,
+         paste0(address, "data/user.daily.propensity.word2vec.diffentropy.gaussian.user", user, ".txt"),
+         sep = "\t",
+         row.names = F, col.names = F)
+}
 ```
