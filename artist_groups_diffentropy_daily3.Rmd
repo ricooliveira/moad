@@ -188,6 +188,8 @@ model = read.binary.vectors("data/artistas_embeddings.bin")
 we = model
 
 artist.metadata = artist.metadata[artist.metadata$artistname %in% attr(model@.Data, "dimnames")[[1]],]
+
+users = LFM$userid %>% unique()
 ```
 
 ```{r}
@@ -196,8 +198,6 @@ melt.artists = melt(artist.metadata, id.vars = c("artistname"), measure.vars = c
 artists.by.genre = select(filter(melt.artists, value == 1), c(artistname,variable))
 names(artists.by.genre) = c("artistname", "genre")
 artists.by.genre$artistname = str_replace_all(artists.by.genre$artistname, " ", "_")
-
-users = LFM$userid %>% unique()
 
 # test
 # user = 7687
@@ -228,13 +228,6 @@ user.genre.daily = function(user){
 
 pblapply(users, user.genre.daily)
 
-  
-
-
-
-  
-
-
 ```
 
 ```{r}
@@ -246,6 +239,10 @@ names(artists.by.locality) = c("artistname", "locality")
 
 localities = unique(artists.by.locality$locality)
 locality.formatted.vectors = do.call(rbind, pblapply(localities, locality.2.dtm, artists.by.locality))
+
+# test
+# user = users[24]
+# users = users[25:997]
 
 user.locality.daily = function(user){
   LFM.compact = LFM %>% select(c(userid, artistname, timestamp)) %>% filter(user == userid)
