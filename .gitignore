@@ -10,6 +10,7 @@ data/LFM.artists.available.txt
 data/LFM_train.txt
 data/LFM_test.txt
 data/user.history.centroids.txt
+data/wmd/*.txt
 
 # ignore html files from notebooks
 *.html
