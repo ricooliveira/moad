@@ -1,0 +1,255 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(gridExtra)
+library(cluster)
+library(readr)
+library(data.table)
+library(dplyr)
+library(stringr)
+library(wordVectors)
+library(lsa)
+library(stats)
+#library(ggbiplot)
+library(pbapply)
+library(moments)
+library(tidytext)
+library(text2vec)
+```
+
+```{r}
+
+address <- "/local/Scripts/moad/"
+# address = "/home/ricardo/DataScience/moad/"
+
+```
+
+```{r}
+
+  format_vectors = function(vec, doc_label){
+      vec = vec %>% as_data_frame() 
+      vec$count = 1
+      vec$document = doc_label
+      return(vec)
+  }
+  
+format_vectors.l = function(vec, doc_label){
+      vec = vec %>% as_data_frame() 
+      vec$count = 1
+      vec$document = paste0("l", doc_label)
+      return(vec)
+}
+
+  day.2.dtm <- function(day, data){
+    vec = filter(data, timestamp == day) %>% select(artistname) %>% as.vector() %>% unique()
+    return(format_vectors(vec, day))
+  }
+  
+  genre.2.dtm <- function(g, data){
+    vec = filter(data, genre == g) %>% select(artistname) %>% as.vector() %>% unique()
+    return(format_vectors(vec, g))
+  }
+  
+  locality.2.dtm <- function(l, data){
+    vec = filter(data, locality == l) %>% select(artistname) %>% as.vector() %>% unique()
+    return(format_vectors.l(vec, l))
+  }
+  
+  contemporaneity.2.dtm <- function(c, data){
+    vec = filter(data, decade == c) %>% select(artistname) %>% as.vector() %>% unique()
+    return(format_vectors(vec, c))
+  }
+  
+```
+
+```{r}
+
+rewrite.lfm <- function(u){
+  Iu = filter(LFM, userid == u)
+  return(as.vector(t(Iu$artistname)))
+}
+
+list.artists.locality = function(l){
+  listL = filter(artists.by.locality, locality == l)
+  return(as.vector(listL$artistname))
+}
+
+decade <- function(year){
+   return (floor(year / 10) * 10)
+}
+
+artist.decades = function(a){
+  artist = filter(artist.metadata, artistname == a)
+  return(data.frame(artistname = a, decade = seq(artist$debut, artist$last, by = 10)))
+}
+
+list.artists.contemporaneity = function(c, artists.by.contemporaneity){
+  listL = filter(artists.by.contemporaneity, decade == c)
+  return(as.vector(listL$artistname))
+}
+
+```
+
+```{r}
+# Data Load
+artist.metadata = fread("data/artist.data.txt", 
+                        sep = ";", 
+                        na.strings = "")
+names(artist.metadata)[2] = "artistname"
+artist.metadata$artistname = str_replace_all(artist.metadata$artistname, " ", "_")
+
+# Correct data 
+artist.metadata[which(artist.metadata$artistname == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.metadata[which(artist.metadata$artistname == "Rod_Stewart"),"debut"] = 1968
+
+# Convert years to decades
+artist.metadata[,"debut"] = decade(artist.metadata[,"debut"])
+artist.metadata[,"last"] = decade(artist.metadata[,"last"])
+
+LFM <- fread("data/LFM_train.txt",
+             sep = "\t",
+             na.strings = "")
+LFM = as.data.frame(LFM)
+LFM$`album-id` = NULL
+LFM$`album-name` = NULL
+names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
+LFM$artistname = str_replace_all(LFM$artistname, " ", "_")
+
+# LFM <- fread("data/LFM.artists.available.txt",
+#              sep = "\t",
+#              na.strings = "")
+# LFM = as.data.frame(LFM)
+# names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
+# LFM$artistname = str_replace_all(LFM$artistname, " ", "_")
+
+LFM$timestamp = LFM$timestamp / (60*60*24) # timestamp em segundos transformado pra dias
+LFM$timestamp = floor(LFM$timestamp) 
+
+model = read.binary.vectors("data/artistas_embeddings.bin")
+we = model
+
+artist.metadata = artist.metadata[artist.metadata$artistname %in% attr(model@.Data, "dimnames")[[1]],]
+
+users = LFM$userid %>% unique()
+```
+
+```{r}
+
+# setup differential entropy
+
+library("rJava")
+.jinit()
+
+# Change location of jar to match yours:
+#  IMPORTANT -- If using the default below, make sure you have set the working directory
+#   in R (e.g. with setwd()) to the location of this file (i.e. demos/r) !!
+.jaddClassPath("/local/jidt/infodynamics.jar")
+
+teCalc<-.jnew("infodynamics/measures/continuous/gaussian/EntropyCalculatorGaussian")
+
+differential.entropy = function(data){
+  .jcall(teCalc,"V","initialise") # V for void return value
+  .jcall(teCalc,"V","setObservations", data)
+  .jcall(teCalc,"D","computeAverageLocalOfObservations")
+}
+
+```
+
+
+```{r}
+# Genre group
+melt.artists = melt(artist.metadata, id.vars = c("artistname"), measure.vars = c(7:ncol(artist.metadata)))
+artists.by.genre = select(filter(melt.artists, value == 1), c(artistname,variable))
+names(artists.by.genre) = c("artistname", "genre")
+artists.by.genre$artistname = str_replace_all(artists.by.genre$artistname, " ", "_")
+
+# test
+# user = 7687
+
+genres = unique(artists.by.genre$genre)
+genre.formatted.vectors = do.call(rbind, pblapply(genres, genre.2.dtm, artists.by.genre))
+
+#localities group
+localities = as.list(unique(artist.metadata$area))
+artists.by.locality = select(artist.metadata, c(artistname, area))
+names(artists.by.locality) = c("artistname", "locality")
+
+localities = unique(artists.by.locality$locality)
+locality.formatted.vectors = do.call(rbind, pblapply(localities, locality.2.dtm, artists.by.locality))
+
+# contemporaneity
+artists.by.contemporaneity = read_csv("data/artists_by_contemporaneity.csv")
+
+decades = unique(artists.by.contemporaneity$decade)
+decade.formatted.vectors = do.call(rbind, pblapply(decades, contemporaneity.2.dtm, artists.by.contemporaneity))
+
+user.daily = function(user){
+  LFM.compact = LFM %>% select(c(userid, artistname, timestamp)) %>% filter(user == userid)
+  days = unique(LFM.compact$timestamp)
+  days.formatted.vectors = do.call(rbind, pblapply(days, day.2.dtm, LFM.compact))
+  
+  #genre
+  dtm = rbind(days.formatted.vectors, genre.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets=dtm[1:(days %>% length()),]
+  features=dtm[(days %>% length()+1):((genres %>% length()) + (days %>% length())),]
+
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.genre = rwmd$dist2(targets, features)
+
+  wmd.genre = apply(wmd.genre, 1, sort, decreasing = T) %>% t() %>% as.data.frame()
+
+  #locality
+  dtm = rbind(days.formatted.vectors, locality.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets = dtm[1:(days %>% length()),]
+  features = dtm[(days %>% length()+1):((localities %>% length()) + (days %>% length())),]
+
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.localities = rwmd$dist2(targets, features)
+
+  wmd.localities = apply( wmd.localities, 1, sort, decreasing = T) %>% t() %>% as.data.frame()
+
+  # contemporaneity
+  dtm = rbind(days.formatted.vectors, decade.formatted.vectors) %>% cast_sparse(document, artistname, count)
+    
+  targets=dtm[1:(days %>% length()),]
+  features=dtm[(days %>% length()+1):((decades %>% length()) + (days %>% length())),]
+
+  rwmd = RelaxedWordMoversDistance$new(we, normalize = FALSE, progressbar = T)
+  wmd.contemporaneity = rwmd$dist2(targets, features)
+
+  wmd.contemporaneity = apply(wmd.contemporaneity, 1, sort, decreasing = T) %>% t() %>% as.data.frame()
+
+  # propensity
+  diff.entropy.contemporaneity = apply(wmd.contemporaneity %>% as.matrix(), 1, differential.entropy)
+  diff.entropy.locality = apply(wmd.localities %>% as.matrix(), 1, differential.entropy)
+  diff.entropy.genre = apply(wmd.genre %>% as.matrix(), 1, differential.entropy)
+  
+  median.entropy.contemporaneity = median(diff.entropy.contemporaneity)
+  median.entropy.locality = median(diff.entropy.locality)
+  median.entropy.genre = median(diff.entropy.genre)
+  
+  affinity.contemporaneity = (diff.entropy.contemporaneity > median.entropy.contemporaneity) %>% as.numeric()
+  affinity.locality = (diff.entropy.locality > median.entropy.locality) %>% as.numeric()
+  affinity.genre = (diff.entropy.genre > median.entropy.genre) %>% as.numeric()
+  
+  propensity.diff.entropy = data.frame(day = days,
+                                       contemporaneity = affinity.contemporaneity,
+                                       locality = affinity.locality,
+                                       genre = affinity.genre)
+  
+  # write
+  fwrite(propensity.diff.entropy,
+         paste0(address, "resultsw2v/user.daily.propensity.word2vec.diffentropy.gaussian.user", user, ".txt"),
+         sep = "\t",
+         row.names = F, col.names = F)
+
+}
+
+pblapply(users, user.daily)
+
+```
