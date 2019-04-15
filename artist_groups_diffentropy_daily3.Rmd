@@ -13,7 +13,7 @@ library(stringr)
 library(wordVectors)
 library(lsa)
 library(stats)
-library(ggbiplot)
+#library(ggbiplot)
 library(pbapply)
 library(moments)
 library(tidytext)
@@ -23,6 +23,7 @@ library(text2vec)
 ```{r}
 
 address <- "/local/Scripts/moad/"
+address = "/home/ricardo/DataScience/moad/"
 
 ```
 
@@ -35,6 +36,13 @@ address <- "/local/Scripts/moad/"
       return(vec)
   }
   
+format_vectors.l = function(vec, doc_label){
+      vec = vec %>% as_data_frame() 
+      vec$count = 1
+      vec$document = paste0("l", doc_label)
+      return(vec)
+}
+
   day.2.dtm <- function(day, data){
     vec = filter(data, timestamp == day) %>% select(artistname) %>% as.vector() %>% unique()
     return(format_vectors(vec, day))
@@ -47,7 +55,7 @@ address <- "/local/Scripts/moad/"
   
   locality.2.dtm <- function(l, data){
     vec = filter(data, locality == l) %>% select(artistname) %>% as.vector() %>% unique()
-    return(format_vectors(vec, l))
+    return(format_vectors.l(vec, l))
   }
   
   contemporaneity.2.dtm <- function(c, data){
@@ -146,14 +154,6 @@ pca_graphic = function(cluster_weights){
   g <- g + theme(legend.direction = 'horizontal', 
                legend.position = 'top')
   return(g)
-}
-
-silhouette_calc <- function(clusters){
-  D = daisy(clusters$weights)
-  sil = silhouette(clusters$k$cluster, D)
-
-  sil = sil %>% as.data.frame.matrix()
-  sil %>% group_by(cluster, neighbor) %>% summarise(sil = mean(sil_width))
 }
 
 ```
