@@ -253,3 +253,9 @@ user.daily = function(user){
 pblapply(users, user.daily)
 
 ```
+```{r}
+
+
+
+```
+
