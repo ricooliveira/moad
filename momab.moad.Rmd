@@ -1,0 +1,55 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("pbapply")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("ggplot2")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(pbapply)
+library(ggplot2)
+library(reshape)
+
+```
+
+```{r}
+
+address <- "/local/Scripts/moad/"
+
+```
+
+```{r}
+
+########################## DATA LOAD ############################
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+
+users = data.train$`user-id` %>% unique()
+
+```
+
