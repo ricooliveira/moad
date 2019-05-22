@@ -3,10 +3,6 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
 ```{r}
 
 if (!require("dplyr")) {
@@ -30,13 +26,14 @@ library(data.table)
 library(pbapply)
 library(ggplot2)
 library(reshape)
+library(lsa)
 
 ```
 
 ```{r}
 
-TOPN = 10
-address <- "/local/Scripts/moad/"
+REC.SIZE = 10
+address <- "/home/ricardo/DataScience/moad/"
 
 # aspects setup
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
@@ -60,6 +57,7 @@ similarity.function.genre = function(data){
 similarity.function.locality = function(data){
   n = nrow(data)
   m = matrix(0L,n,n)
+  N = nrow(artist.data)
   for(i in 1:n){
     for(j in 1:n){
       if(data[i,"area"] == data[j,"area"]){
@@ -125,7 +123,7 @@ ILD = function(data, similarity.function){
 # Distance List History Metric (DLH)
 
 distance.function.genre = function(data, history){
-  centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
+  centroid = genre.centroids[which(genre.centroids$`user-id` == user),]
   centroid$`user-id` = NULL
   distance = 0
   for(i in 1:nrow(data)){
@@ -199,13 +197,13 @@ data.train <- fread(paste0(address,"data/LFM_train.txt"),
                     header = TRUE)
 data.train = as.data.frame(data.train)
 
-data.test <- fread(paste0(address,"data/LFM_test.txt"), 
-                    sep = "\t", 
-                    verbose = TRUE,
-                    header = TRUE)
-data.test = as.data.frame(data.test)
+# data.test <- fread(paste0(address,"data/LFM_test.txt"), 
+#                     sep = "\t", 
+#                     verbose = TRUE,
+#                     header = TRUE)
+# data.test = as.data.frame(data.test)
 
-artist.data <- fread(paste0(address,"experimento/artist.data.txt"), 
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
                      sep = ";", 
                      verbose = TRUE,
                      header = TRUE)
@@ -223,6 +221,12 @@ for(i in col){
   artist.data[which(is.na(artist.data[,i])),i] = 0
 }
 
+genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+genre.centroids = as.data.frame(genre.centroids)
+
 users = data.train$`user-id` %>% unique()
 
 ```
@@ -236,10 +240,10 @@ users = data.train$`user-id` %>% unique()
 
 multi.objective = function(list.elements.index){
    size = length(list.elements.index)
-   list.elements = as.data.frame(artist.data.new[list.elements.index,"Artist"])
+   list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
    names(list.elements) = "artist"
    n = length(aspects.to.diversify)
-   df = artist.data.new[artist.data.new$Artist %in% list.elements$artist,]
+   df = artist.data[artist.data$Artist %in% list.elements$artist,]
    
    sum.ild = 0
    for(i in aspects.to.diversify){
@@ -277,11 +281,96 @@ names(distance.functions) <- c("Contemporaneity", "Locality", "Genre")
 distance.functions[[1]] <- distance.function.contemporaneity; distance.functions[[2]] <- distance.function.locality
 distance.functions[[3]] <- distance.function.genre
 
+
+#################### Calculate frequencies for IOF for type and Locality  ####################
+
+by.area = group_by(artist.data,area)
+freq.area = dplyr::summarise(by.area, total = n())
+
+```
+
+```{r}
+
+################################## ShiftBand Constants ###################################
+
+ALPHA = 0.1
+BETA = 0.1
+GAMMA = 0.1
+ETA = 0.1
+K = nrow(artist.data) # Number of scenarios
+TRIALS = 10 
+S = 200000
+
 ```
 
 ```{r}
 
 ########################################## MAB ##########################################
+
+#ShiftBand implemented as seen in
+# AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
+
+  random.probability.sort = function(p){
+    total = sum(p)
+    target = runif(1, 0, total)
+    i = 1
+    while(total - p[i] > target){
+      total = total - p[i]
+      i = i + 1
+    }
+    return(i)
+  }
+
+  set.probability = function(i, w, W){
+    return((1 - GAMMA) * w[i] / W + GAMMA / K)
+  }
+  
+  set.weights = function(i, w, W, p, x.exp){
+    return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
+  }
+  
+  set.probability.matrix = function(n, w.matrix, W) {
+    lapply(c(1:K), set.probability, w.matrix[n,], W[n]) %>% as.numeric()
+  }
+
+# user = users[1]
+# history = data.train
+one.user.momab.shiftband = function(user, history){
+  user.history = history[which(history$`user-id` == user),]
+    
+  # setup ShiftBand
+  w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
+  w.matrix.diversity[,] = 1
+  w.matrix.affinity = w.matrix.diversity
+
+  # ranked MAB ShiftBand
+
+  select.rec.list = function(n, p1, p2){
+    p = (p1[n,] + p2[n,]) / 2
+    item = random.probability.sort(p)
+    p1[,item] = 0
+    p2[,item] = 0
+    return(item)
+  }
+
+  for (i in 1:S) { # each user iteraction
+
+    W.diversity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.diversity[x,]))) %>% as.vector()
+    W.affinity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.affinity[x,]))) %>% as.vector()
+    p.diversity = do.call(rbind, lapply(c(1:REC.SIZE), set.probability.matrix, w.matrix.diversity, W.diversity))
+    p.affinity = do.call(rbind, lapply(c(1:REC.SIZE), set.probability.matrix, w.matrix.affinity, W.affinity))
+
+    # mount recommendation list
+    p.diversity.copy = p.diversity
+    p.affinity.copy = p.affinity
+    rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
+    
+    # collect reward
+    x = multi.objective(rec.list)
+    
+  }
+    
+}
 
 ```
 
