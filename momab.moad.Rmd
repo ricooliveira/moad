@@ -222,7 +222,7 @@ for(i in col){
 }
 
 genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"), 
-                    sep = "\t", 
+                    sep = ",", 
                     verbose = TRUE,
                     header = TRUE)
 genre.centroids = as.data.frame(genre.centroids)
@@ -237,6 +237,8 @@ users = data.train$`user-id` %>% unique()
 
 # This function will be executed for a user, with specific data.test, specified aspects to diversify and a determined 
 # list size (TOPN)
+
+# list.elements.index = rec.list
 
 multi.objective = function(list.elements.index){
    size = length(list.elements.index)
@@ -336,7 +338,12 @@ S = 200000
 # user = users[1]
 # history = data.train
 one.user.momab.shiftband = function(user, history){
-  user.history = history[which(history$`user-id` == user),]
+  
+  # TO DO - determine user propensity using ILDPD
+  
+  user.history = history[which(history$`user-id` == user),] %>% select(`artist-name`)
+  names(user.history) = "Artist"
+  data.train.user = inner_join(user.history, artist.data, by = "Artist")
     
   # setup ShiftBand
   w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
@@ -366,7 +373,9 @@ one.user.momab.shiftband = function(user, history){
     rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
     
     # collect reward
-    x = multi.objective(rec.list)
+    reward = multi.objective(rec.list)
+    
+    
     
   }
     
