@@ -196,6 +196,7 @@ data.train <- fread(paste0(address,"data/LFM_train.txt"),
                     verbose = TRUE,
                     header = TRUE)
 data.train = as.data.frame(data.train)
+names(data.train) = c("albumid", "artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "regtimestamp", "artistname", "albumname")
 
 # data.test <- fread(paste0(address,"data/LFM_test.txt"), 
 #                     sep = "\t", 
@@ -227,7 +228,7 @@ genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"),
                     header = TRUE)
 genre.centroids = as.data.frame(genre.centroids)
 
-users = data.train$`user-id` %>% unique()
+users = data.train$userid %>% unique()
 
 ```
 
@@ -306,6 +307,15 @@ S = 200000
 ```
 
 ```{r}
+################################# MEAN ILD ########################################
+
+mean.ild = function(history) {
+  #x = inner_join(data.train, artist.data, by = c("artistname" = "Artist"))
+}
+
+```
+
+```{r}
 
 ########################################## MAB ##########################################
 
@@ -339,7 +349,7 @@ S = 200000
 # history = data.train
 one.user.momab.shiftband = function(user, history){
   
-  # TO DO - determine user propensity using ILDPD
+  # TO DO - determine user propensity using history ILD
   
   user.history = history[which(history$`user-id` == user),] %>% select(`artist-name`)
   names(user.history) = "Artist"

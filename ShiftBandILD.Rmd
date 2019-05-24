@@ -286,8 +286,9 @@ one.user.shiftband.ild = function(user, history){
   user.history$timestamp = user.history$timestamp / (60*60*24) # timestamp in seconds switched to days
   user.history$timestamp = floor(user.history$timestamp)
   user.history.unique = user.history$timestamp %>% unique()
-  S = length(user.history.unique)
-  TRIALS = S
+  # S = length(user.history.unique)
+  S = 1 # considering a unique optimum recommendation for the whole user history
+  TRIALS = 20000 # ajustable
 
   # test
   #day = user.history.unique[1]
