@@ -120,6 +120,21 @@ ILD = function(data, similarity.function){
   }
 }
 
+list.ILD = function(list.elements){
+  list.elements = list.elements %>% as.data.frame()
+  size = nrow(list.elements)
+  # list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
+  names(list.elements) = "artist"
+  # n = length(aspects.to.diversify)
+  df = artist.data[artist.data$Artist %in% list.elements$artist,]
+  
+  return(c(
+            ILD(df[(aspects[[1]])], similarity.function.contemporaneity),
+            ILD(df[(aspects[[2]])], similarity.function.locality),
+            ILD(df[(aspects[[3]])], similarity.function.genre))
+          )
+}
+
 # Distance List History Metric (DLH)
 
 distance.function.genre = function(data, history){
@@ -307,11 +322,27 @@ S = 200000
 ```
 
 ```{r}
-################################# MEAN ILD ########################################
+################################# MEDIAN ILD ########################################
 
-mean.ild = function(history) {
-  #x = inner_join(data.train, artist.data, by = c("artistname" = "Artist"))
-}
+# clean zeros and median
+
+all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+                     sep = ",")
+all.ilds = as.data.frame(all.ilds)
+
+names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
+all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
+
+median.contemporaneity = median(all.ilds.filtered$contemporaneity)
+median.locality = median(all.ilds.filtered$locality)
+median.genre = median(all.ilds.filtered$genre)
+
+```
+
+```{r}
+################################# USER PROPENSITY ########################################
+
+
 
 ```
 

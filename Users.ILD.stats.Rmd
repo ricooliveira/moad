@@ -209,6 +209,11 @@ fwrite(all.ilds,
 ```{r}
 
 # clean zeros and median
+
+all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+                     sep = ",")
+all.ilds = as.data.frame(all.ilds)
+
 names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
 all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
 
