@@ -39,8 +39,6 @@ address <- "/home/ricardo/DataScience/moad/"
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
 #for(aspect.index in 1:4){
 aspects.all = c(1,2,3)
-aspects.not.to.diversify = c(3)
-aspects.to.diversify = setdiff(aspects.all,aspects.not.to.diversify)
 
 ```
 
@@ -350,7 +348,11 @@ user.propensity = function(user, history, median.ild){
 
 # batch process and save
 propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild))
+names(propensities) = c("user", "div.contemporaneity", "div.locality", "div.genre")
 
+fwrite(rbind(user, propensities),
+       paste0(address, "resultsmomab/user.propensities.txt"),
+       col.names = TRUE, row.names = FALSE, quote = TRUE)
 ```
 
 ```{r}
@@ -387,13 +389,6 @@ propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild
 # history = data.train
 one.user.momab.shiftband = function(user, history){
   
-  # determine user propensity using history ILD
-  
-  # online
-  # user.prop = user.propensity(user, history, median.ild)  
-  # batch
-  
-    
   # setup ShiftBand
   w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
   w.matrix.diversity[,] = 1
@@ -421,7 +416,21 @@ one.user.momab.shiftband = function(user, history){
     p.affinity.copy = p.affinity
     rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
     
-    # collect reward
+    # COLLECT REWARD
+    
+    # determine user propensity using history ILD
+  
+    # online
+    # user.prop = user.propensity(user, history, median.ild)  
+    # batch
+    # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
+    
+    # UNTESTED CODE
+    user.prop = user.prop %>% filter(user.prop$user == user) %>% select(div.contemporaneity, div.locality, div.genre)
+    aspects.to.diversify = 
+    aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
+    
+    # TODO - setup aspects by propensity
     reward = multi.objective(rec.list)
     
     
