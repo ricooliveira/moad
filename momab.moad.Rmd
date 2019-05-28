@@ -333,16 +333,23 @@ all.ilds = as.data.frame(all.ilds)
 names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
 all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
 
-median.contemporaneity = median(all.ilds.filtered$contemporaneity)
-median.locality = median(all.ilds.filtered$locality)
-median.genre = median(all.ilds.filtered$genre)
+median.ild = c(median(all.ilds.filtered$contemporaneity), median(all.ilds.filtered$locality), median(all.ilds.filtered$genre))
 
 ```
 
 ```{r}
 ################################# USER PROPENSITY ########################################
 
+user.propensity = function(user, history, median.ild){
+  user.history = history[which(history$userid == user),] %>% select(artistname)
+  names(user.history) = "Artist"
+  user.history = user.history %>% unique()
+  user.ilds = list.ILD(user.history)
+  return(user.ilds > median.ild)
+}
 
+# batch process and save
+propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild))
 
 ```
 
@@ -380,11 +387,12 @@ median.genre = median(all.ilds.filtered$genre)
 # history = data.train
 one.user.momab.shiftband = function(user, history){
   
-  # TO DO - determine user propensity using history ILD
+  # determine user propensity using history ILD
   
-  user.history = history[which(history$`user-id` == user),] %>% select(`artist-name`)
-  names(user.history) = "Artist"
-  data.train.user = inner_join(user.history, artist.data, by = "Artist")
+  # online
+  # user.prop = user.propensity(user, history, median.ild)  
+  # batch
+  
     
   # setup ShiftBand
   w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
