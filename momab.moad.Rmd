@@ -148,6 +148,7 @@ distance.function.genre = function(data, history){
 distance.function.locality = function(data, history){
   rec <- as.vector(t(data))
   h <- as.vector(t(history))
+  N = nrow(artist.data)
   
   rec.g <- sapply(rec, function(x) {freq.area[which(x == freq.area$area), ]$total})
   h.g <- sapply(h, function(x) {freq.area[which(x == freq.area$area), ]$total})
@@ -313,7 +314,7 @@ ALPHA = 0.1
 BETA = 0.1
 GAMMA = 0.1
 ETA = 0.1
-K = nrow(artist.data) # Number of scenarios
+K = nrow(artist.data) # Number of artists
 TRIALS = 10 
 S = 200000
 
@@ -339,6 +340,7 @@ median.ild = c(median(all.ilds.filtered$contemporaneity), median(all.ilds.filter
 ################################# USER PROPENSITY ########################################
 
 user.propensity = function(user, history, median.ild){
+  print(user)
   user.history = history[which(history$userid == user),] %>% select(artistname)
   names(user.history) = "Artist"
   user.history = user.history %>% unique()
@@ -387,7 +389,10 @@ fwrite(rbind(user, propensities),
 
 # user = users[1]
 # history = data.train
-one.user.momab.shiftband = function(user, history){
+one.user.momab.shiftband = function(user){
+  
+  artist.data.listenned = unique(data.train[which(data.train$userid == user),]$artistname)
+  data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   
   # setup ShiftBand
   w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
@@ -425,16 +430,28 @@ one.user.momab.shiftband = function(user, history){
     # batch
     # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
     
-    # UNTESTED CODE
     user.prop = user.prop %>% filter(user.prop$user == user) %>% select(div.contemporaneity, div.locality, div.genre)
-    aspects.to.diversify = 
+    aspects.to.diversify = which(user.prop)
     aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
-    # TODO - setup aspects by propensity
     reward = multi.objective(rec.list)
     
+    # set xit
+    xit.diversity = matrix(data = 0, nrow = REC.SIZE, ncol = K)
+    xit.affinity = matrix(data = 0, nrow = REC.SIZE, ncol = K)
     
+    #xit = xit.diversity
+    #p = p.diversity
+    for(pos in 1:REC.SIZE){
+      xit.diversity[pos, rec.list[pos]] = reward[1] / p[pos, rec.list[pos]]
+      xit.affinity[pos, rec.list[pos]] = reward[2] / p[pos, rec.list[pos]]
+    }
+    update.xit = function(pos, xit, p, reward){
+      xit[pos, rec.list[pos]] = reward / p[pos, rec.list[pos]]
+    }
     
+    lapply(c(1:REC.SIZE), update.xit, xit.diversity, p.diversity, reward[1])
+    lapply(c(1:REC.SIZE), update.xit, xit.affinity, p.affinity, reward[2])
   }
     
 }
