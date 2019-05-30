@@ -32,7 +32,8 @@ library(lsa)
 
 ```{r}
 
-REC.SIZE = 10
+REC.SIZE = 5
+TEST.SIZE = 20
 address <- "/home/ricardo/DataScience/moad/"
 
 # aspects setup
@@ -223,6 +224,8 @@ artist.data <- fread(paste0(address,"data/artist.data.txt"),
                      verbose = TRUE,
                      header = TRUE)
 artist.data = as.data.frame(artist.data)
+#test: artist.data = artist.data[1:20,]
+# data.train = data.train[data.train$artistname %in% artist.data$Artist,]
 
 # Correcting debut year from Rod Stewart - wrong in MusicBrainz
 
@@ -315,8 +318,8 @@ BETA = 0.1
 GAMMA = 0.1
 ETA = 0.1
 K = nrow(artist.data) # Number of artists
-TRIALS = 10 
-S = 200000
+TRIALS = K * 10 
+S = 1
 
 ```
 
@@ -361,6 +364,7 @@ fwrite(rbind(user, propensities),
 
 ########################################## MAB ##########################################
 
+# Multiobjective Ranked ShiftBand
 #ShiftBand implemented as seen in
 # AUER, Peter. Using confidence bounds for exploitation-exploration trade-offs. Journal of Machine Learning Research, v. 3, n. Nov, p. 397-422, 2002.
 
@@ -379,7 +383,7 @@ fwrite(rbind(user, propensities),
     return((1 - GAMMA) * w[i] / W + GAMMA / K)
   }
   
-  set.weights = function(i, w, W, p, x.exp){
+  set.weights = function(i, w, p, x.exp){
     return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
   }
   
@@ -387,29 +391,20 @@ fwrite(rbind(user, propensities),
     lapply(c(1:K), set.probability, w.matrix[n,], W[n]) %>% as.numeric()
   }
 
-# user = users[1]
-# history = data.train
+# user = users[2]
 one.user.momab.shiftband = function(user){
   
   artist.data.listenned = unique(data.train[which(data.train$userid == user),]$artistname)
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   
   # setup ShiftBand
-  w.matrix.diversity = matrix(nrow = REC.SIZE, ncol = K)
-  w.matrix.diversity[,] = 1
+  w.matrix.diversity = matrix(data = 1, nrow = REC.SIZE, ncol = K)
   w.matrix.affinity = w.matrix.diversity
 
   # ranked MAB ShiftBand
-
-  select.rec.list = function(n, p1, p2){
-    p = (p1[n,] + p2[n,]) / 2
-    item = random.probability.sort(p)
-    p1[,item] = 0
-    p2[,item] = 0
-    return(item)
-  }
-
-  for (i in 1:S) { # each user iteraction
+  
+  # i = 1
+  for (i in 1:TRIALS) { # each user iteraction
 
     W.diversity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.diversity[x,]))) %>% as.vector()
     W.affinity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.affinity[x,]))) %>% as.vector()
@@ -419,7 +414,15 @@ one.user.momab.shiftband = function(user){
     # mount recommendation list
     p.diversity.copy = p.diversity
     p.affinity.copy = p.affinity
-    rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
+    rec.list = c()
+    for (n in 1:REC.SIZE){
+      p = (p.diversity.copy[n,] + p.affinity.copy[n,]) / 2
+      item = random.probability.sort(p)
+      p.diversity.copy[,item] = 0
+      p.affinity.copy[,item] = 0
+      rec.list = c(rec.list, item)
+    }
+    # rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
     
     # COLLECT REWARD
     
@@ -430,31 +433,45 @@ one.user.momab.shiftband = function(user){
     # batch
     # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
     
-    user.prop = user.prop %>% filter(user.prop$user == user) %>% select(div.contemporaneity, div.locality, div.genre)
+    user.prop = c(TRUE, TRUE, FALSE) #testing
+    #user.prop = user.prop %>% filter(user.prop$user == user) %>% select(div.contemporaneity, div.locality, div.genre)
     aspects.to.diversify = which(user.prop)
     aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
     reward = multi.objective(rec.list)
     
     # set xit
-    xit.diversity = matrix(data = 0, nrow = REC.SIZE, ncol = K)
-    xit.affinity = matrix(data = 0, nrow = REC.SIZE, ncol = K)
+    xit.diversity = matrix(data = 0.0, nrow = REC.SIZE, ncol = K)
+    xit.affinity = matrix(data = 0.0, nrow = REC.SIZE, ncol = K)
     
     #xit = xit.diversity
     #p = p.diversity
     for(pos in 1:REC.SIZE){
-      xit.diversity[pos, rec.list[pos]] = reward[1] / p[pos, rec.list[pos]]
-      xit.affinity[pos, rec.list[pos]] = reward[2] / p[pos, rec.list[pos]]
+      xit.diversity[pos, rec.list[pos]] = reward[1] / p.diversity[pos, rec.list[pos]]
+      xit.affinity[pos, rec.list[pos]] = reward[2] / p.affinity[pos, rec.list[pos]]
     }
-    update.xit = function(pos, xit, p, reward){
-      xit[pos, rec.list[pos]] = reward / p[pos, rec.list[pos]]
+    # update.xit = function(pos, xit, p, reward){
+    #   xit[pos, rec.list[pos]] = reward / p[pos, rec.list[pos]]
+    # }
+    # 
+    # lapply(c(1:REC.SIZE), update.xit, xit.diversity, p.diversity, reward[1])
+    # lapply(c(1:REC.SIZE), update.xit, xit.affinity, p.affinity, reward[2])
+    
+    # update weights
+    # pos = 1
+    for(pos in 1:REC.SIZE){
+      w.matrix.diversity[pos, ] = lapply(c(1:K), set.weights, w.matrix.diversity[pos,], 
+                                       p.diversity[pos,], xit.diversity[pos,]) %>% as.numeric()
+      w.matrix.affinity[pos, ] = lapply(c(1:K), set.weights, w.matrix.affinity[pos,], 
+                                       p.affinity[pos,], xit.affinity[pos,]) %>% as.numeric()
     }
-    
-    lapply(c(1:REC.SIZE), update.xit, xit.diversity, p.diversity, reward[1])
-    lapply(c(1:REC.SIZE), update.xit, xit.affinity, p.affinity, reward[2])
-  }
-    
+  fwrite(reward %>% as.data.frame() %>% t() %>% as.data.frame(),
+           paste0(address,"resultsmomab/momab.shiftband.rewards.user",user,".txt"), 
+           col.names = FALSE, row.names = FALSE, sep = "\t", append = TRUE)
+  }  
 }
+one.user.momab.shiftband(user)
+lapply(users, one.user.momab.shiftband)
 
 ```
 
