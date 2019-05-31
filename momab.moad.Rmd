@@ -27,12 +27,13 @@ library(pbapply)
 library(ggplot2)
 library(reshape)
 library(lsa)
+library(recommenderlab)
 
 ```
 
 ```{r}
 
-REC.SIZE = 5
+REC.SIZE = 10
 TEST.SIZE = 20
 address <- "/home/ricardo/DataScience/moad/"
 
@@ -224,7 +225,7 @@ artist.data <- fread(paste0(address,"data/artist.data.txt"),
                      verbose = TRUE,
                      header = TRUE)
 artist.data = as.data.frame(artist.data)
-#test: artist.data = artist.data[1:20,]
+#test: artist.data = artist.data[1:TEST.SIZE,]
 # data.train = data.train[data.train$artistname %in% artist.data$Artist,]
 
 # Correcting debut year from Rod Stewart - wrong in MusicBrainz
@@ -317,7 +318,7 @@ ALPHA = 0.1
 BETA = 0.1
 GAMMA = 0.1
 ETA = 0.1
-K = nrow(artist.data) # Number of artists
+K = 1000 # Number of artists - UBCF
 TRIALS = K * 10 
 S = 1
 
@@ -341,23 +342,69 @@ median.ild = c(median(all.ilds.filtered$contemporaneity), median(all.ilds.filter
 
 ```{r}
 ################################# USER PROPENSITY ########################################
+# 
+# user.propensity = function(user, history, median.ild){
+#   print(user)
+#   user.history = history[which(history$userid == user),] %>% select(artistname)
+#   names(user.history) = "Artist"
+#   user.history = user.history %>% unique()
+#   user.ilds = list.ILD(user.history)
+#   return(user.ilds > median.ild)
+# }
+# 
+# # batch process and save
+# propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild))
+# user.propensities = cbind(users, propensities) %>% as.data.frame()
+# names(user.propensities) = c("userid", "div.contemporaneity", "div.locality", "div.genre")
+# 
+# fwrite(user.propensities,
+#        paste0(address, "resultsmomab/user.propensities.txt"),
+#        col.names = TRUE, row.names = FALSE, quote = TRUE)
 
-user.propensity = function(user, history, median.ild){
-  print(user)
-  user.history = history[which(history$userid == user),] %>% select(artistname)
-  names(user.history) = "Artist"
-  user.history = user.history %>% unique()
-  user.ilds = list.ILD(user.history)
-  return(user.ilds > median.ild)
+propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"), 
+                          sep = ",", 
+                          header = TRUE)
+
+```
+
+```{r}
+############################## UBCF ##############################
+
+# Transforming LFM.artists.available in a rating matrix - Artists rating
+
+artists.listenned = unique(data.train$artistname)
+
+byUserArtist = group_by(data.train, userid, artistname)
+sumArtistsUser = summarise(byUserArtist,total = n())
+
+colnames(sumArtistsUser) = c("user", "item", "rating")
+sumArtistsUser = as.data.frame(sumArtistsUser)
+affinity.matrix = as(sumArtistsUser,"realRatingMatrix")
+
+Rec.model = Recommender(affinity.matrix,
+                        method="UBCF", 
+                        param=list(normalize = "Z-score",
+                                   method="Cosine",
+                                   nn=5))
+
+ubcf.top.rerank = vector("list",length(users))
+
+# Generate UBCF Top K Recommendations
+for(i in 1:length(users)){ # refazer pra tirar o laço. Usar stack. Data frame transforma elementos em fatores, atrapalha o stack
+  print(i)
+  recommended.items <- predict(Rec.model, affinity.matrix[as.character(users[i]),], n = K)
+  ubcf.top.rerank[[i]] = as.data.frame(as(recommended.items, "list"))
 }
 
-# batch process and save
-propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild))
-names(propensities) = c("user", "div.contemporaneity", "div.locality", "div.genre")
-
-fwrite(rbind(user, propensities),
-       paste0(address, "resultsmomab/user.propensities.txt"),
-       col.names = TRUE, row.names = FALSE, quote = TRUE)
+# Write UBCF Top 50 Recommendations
+for(i in 1:length(users)){
+  print(i)
+  df.user = as.data.frame(matrix(as.character(users[i]),TOPN_RERANK,1))
+  df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
+  fwrite(df.user, 
+         paste0(address,"bases de dados/experimento/sample1000.ubcf.top50.csv"),
+         row.names = FALSE, col.names = FALSE, sep = ";", append = TRUE, quote = TRUE)
+}
 ```
 
 ```{r}
@@ -433,9 +480,9 @@ one.user.momab.shiftband = function(user){
     # batch
     # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
     
-    user.prop = c(TRUE, TRUE, FALSE) #testing
-    #user.prop = user.prop %>% filter(user.prop$user == user) %>% select(div.contemporaneity, div.locality, div.genre)
-    aspects.to.diversify = which(user.prop)
+    # propensities = c(TRUE, TRUE, FALSE) #testing
+    user.prop = propensities %>% filter(userid == user) %>% select(div.contemporaneity, div.locality, div.genre)
+    aspects.to.diversify = which(user.prop == 1)
     aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
     reward = multi.objective(rec.list)
@@ -470,7 +517,14 @@ one.user.momab.shiftband = function(user){
            col.names = FALSE, row.names = FALSE, sep = "\t", append = TRUE)
   }  
 }
+start.time <- Sys.time()
+
 one.user.momab.shiftband(user)
+
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
 lapply(users, one.user.momab.shiftband)
 
 ```
