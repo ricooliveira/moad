@@ -258,8 +258,9 @@ users = data.train$userid %>% unique()
 # list size (TOPN)
 
 # list.elements.index = rec.list
+# artist.data = ubcf.user.artistdata
 
-multi.objective = function(list.elements.index){
+multi.objective = function(list.elements.index, artist.data){
    size = length(list.elements.index)
    list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
    names(list.elements) = "artist"
@@ -273,12 +274,18 @@ multi.objective = function(list.elements.index){
    }
    y1 = (sum.ild / n)
    
+   if(length(aspects.not.to.diversify) == 0)
+     return(c(y1, 0))
+   
    sum.dlh = 0
    for(i in aspects.not.to.diversify){
      df.aspect = df[(aspects[[i]])]
      sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
    }
    y2 = (sum.dlh / length(aspects.not.to.diversify))
+   
+   if(length(aspects.to.diversify) == 0)
+     return(c(0, y2))
    
    return(c(y1, y2))
 }
@@ -396,13 +403,13 @@ for(i in 1:length(users)){ # refazer pra tirar o laço. Usar stack. Data frame t
   ubcf.top.rerank[[i]] = as.data.frame(as(recommended.items, "list"))
 }
 
-# Write UBCF Top 50 Recommendations
+# Write UBCF Top K Recommendations
 for(i in 1:length(users)){
   print(i)
-  df.user = as.data.frame(matrix(as.character(users[i]),TOPN_RERANK,1))
+  df.user = as.data.frame(matrix(as.character(users[i]),K,1))
   df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
   fwrite(df.user, 
-         paste0(address,"bases de dados/experimento/sample1000.ubcf.top50.csv"),
+         paste0(address,"resultsmomab/sample1000.ubcf.top1000.csv"),
          row.names = FALSE, col.names = FALSE, sep = ";", append = TRUE, quote = TRUE)
 }
 ```
@@ -430,19 +437,28 @@ for(i in 1:length(users)){
     return((1 - GAMMA) * w[i] / W + GAMMA / K)
   }
   
-  set.weights = function(i, w, p, x.exp){
-    return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S))))) # S = number of days)
+  set.weights = function(i, w, p, x.exp, W){
+    return(w[i] * exp(ETA * (x.exp[i] + ALPHA / (p[i] * sqrt(TRIALS * K / S)))) + (BETA/K) * W) # S = number of days)
   }
   
   set.probability.matrix = function(n, w.matrix, W) {
     lapply(c(1:K), set.probability, w.matrix[n,], W[n]) %>% as.numeric()
   }
 
-# user = users[2]
-one.user.momab.shiftband = function(user){
+ubcf <- fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.csv"), 
+                    sep = ";", 
+                    verbose = FALSE,
+                    header = FALSE)
+ubcf = as.data.frame(ubcf)
+names(ubcf) = c("userid", "Artist")
+# user = users[1]
+one.user.momab.shiftband = function(user, ubcf){
   
   artist.data.listenned = unique(data.train[which(data.train$userid == user),]$artistname)
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
+  # filter ubcf list for user
+  ubcf.user = ubcf %>% filter(userid == user)
+  ubcf.user.artistdata = artist.data %>% filter(artist.data$Artist %in% ubcf.user$Artist)
   
   # setup ShiftBand
   w.matrix.diversity = matrix(data = 1, nrow = REC.SIZE, ncol = K)
@@ -485,7 +501,7 @@ one.user.momab.shiftband = function(user){
     aspects.to.diversify = which(user.prop == 1)
     aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
-    reward = multi.objective(rec.list)
+    reward = multi.objective(rec.list,ubcf.user.artistdata)
     
     # set xit
     xit.diversity = matrix(data = 0.0, nrow = REC.SIZE, ncol = K)
@@ -519,7 +535,7 @@ one.user.momab.shiftband = function(user){
 }
 start.time <- Sys.time()
 
-one.user.momab.shiftband(user)
+one.user.momab.shiftband(user, ubcf)
 
 end.time <- Sys.time()
 time.taken <- end.time - start.time
