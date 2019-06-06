@@ -324,7 +324,7 @@ freq.area = dplyr::summarise(by.area, total = n())
 ALPHA = 0.1
 BETA = 0.1
 GAMMA = 0.1
-ETA = 0.1
+ETA = 0.001
 K = 1000 # Number of artists - UBCF
 TRIALS = K * 10 
 S = 1
@@ -464,16 +464,30 @@ one.user.momab.shiftband = function(user, ubcf){
   w.matrix.diversity = matrix(data = 1, nrow = REC.SIZE, ncol = K)
   w.matrix.affinity = w.matrix.diversity
 
+  # determine user propensity using history ILD
+  
+  # online
+  # user.prop = user.propensity(user, history, median.ild)  
+  # batch
+  # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
+  
+  # propensities = c(TRUE, TRUE, FALSE) #testing
+  user.prop = propensities %>% filter(userid == user) %>% select(div.contemporaneity, div.locality, div.genre)
+  aspects.to.diversify = which(user.prop == 1)
+  aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
+  
   # ranked MAB ShiftBand
   
-  # i = 1
   for (i in 1:TRIALS) { # each user iteraction
+    print(i)
 
     W.diversity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.diversity[x,]))) %>% as.vector()
     W.affinity = do.call(cbind, lapply(c(1:REC.SIZE), function(x) sum(w.matrix.affinity[x,]))) %>% as.vector()
     p.diversity = do.call(rbind, lapply(c(1:REC.SIZE), set.probability.matrix, w.matrix.diversity, W.diversity))
     p.affinity = do.call(rbind, lapply(c(1:REC.SIZE), set.probability.matrix, w.matrix.affinity, W.affinity))
-
+    # p.diversity[, 1:15]
+    # p.affinity[, 1:15]
+    
     # mount recommendation list
     p.diversity.copy = p.diversity
     p.affinity.copy = p.affinity
@@ -485,21 +499,10 @@ one.user.momab.shiftband = function(user, ubcf){
       p.affinity.copy[,item] = 0
       rec.list = c(rec.list, item)
     }
+    # rec.list = c(1:10)
     # rec.list = do.call(cbind, (lapply(c(1:REC.SIZE), select.rec.list, p.diversity.copy, p.affinity.copy))) %>% as.vector()
     
     # COLLECT REWARD
-    
-    # determine user propensity using history ILD
-  
-    # online
-    # user.prop = user.propensity(user, history, median.ild)  
-    # batch
-    # user.prop = fread(paste0(address,"resultsmomab/user.propensities.txt"), sep = "\t", header = TRUE)
-    
-    # propensities = c(TRUE, TRUE, FALSE) #testing
-    user.prop = propensities %>% filter(userid == user) %>% select(div.contemporaneity, div.locality, div.genre)
-    aspects.to.diversify = which(user.prop == 1)
-    aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
     
     reward = multi.objective(rec.list,ubcf.user.artistdata)
     
@@ -507,8 +510,6 @@ one.user.momab.shiftband = function(user, ubcf){
     xit.diversity = matrix(data = 0.0, nrow = REC.SIZE, ncol = K)
     xit.affinity = matrix(data = 0.0, nrow = REC.SIZE, ncol = K)
     
-    #xit = xit.diversity
-    #p = p.diversity
     for(pos in 1:REC.SIZE){
       xit.diversity[pos, rec.list[pos]] = reward[1] / p.diversity[pos, rec.list[pos]]
       xit.affinity[pos, rec.list[pos]] = reward[2] / p.affinity[pos, rec.list[pos]]
@@ -524,11 +525,12 @@ one.user.momab.shiftband = function(user, ubcf){
     # pos = 1
     for(pos in 1:REC.SIZE){
       w.matrix.diversity[pos, ] = lapply(c(1:K), set.weights, w.matrix.diversity[pos,], 
-                                       p.diversity[pos,], xit.diversity[pos,]) %>% as.numeric()
+                                       p.diversity[pos,], xit.diversity[pos,], W.diversity[pos]) %>% as.numeric()
       w.matrix.affinity[pos, ] = lapply(c(1:K), set.weights, w.matrix.affinity[pos,], 
-                                       p.affinity[pos,], xit.affinity[pos,]) %>% as.numeric()
+                                       p.affinity[pos,], xit.affinity[pos,], W.affinity[pos]) %>% as.numeric()
     }
-  fwrite(reward %>% as.data.frame() %>% t() %>% as.data.frame(),
+    # w.matrix.diversity[, 1:15]
+    fwrite(reward %>% as.data.frame() %>% t() %>% as.data.frame(),
            paste0(address,"resultsmomab/momab.shiftband.rewards.user",user,".txt"), 
            col.names = FALSE, row.names = FALSE, sep = "\t", append = TRUE)
   }  
