@@ -36,6 +36,7 @@ library(recommenderlab)
 REC.SIZE = 10
 TEST.SIZE = 20
 address <- "/home/ricardo/DataScience/moad/"
+NARTISTS = 1000
 
 # aspects setup
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
@@ -388,7 +389,7 @@ ubcf.top.rerank = vector("list",length(users))
 # Generate UBCF Top K Recommendations
 for(i in 1:length(users)){ # refazer pra tirar o laço. Usar stack. Data frame transforma elementos em fatores, atrapalha o stack
   print(i)
-  recommended.items <- predict(Rec.model, affinity.matrix[as.character(users[i]),], n = K)
+  recommended.items <- predict(Rec.model, affinity.matrix[as.character(users[i]),], n = NARTISTS)
   ubcf.top.rerank[[i]] = as.data.frame(as(recommended.items, "list"))
 }
 
@@ -398,9 +399,15 @@ for(i in 1:length(users)){
   df.user = as.data.frame(matrix(as.character(users[i]),K,1))
   df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
   fwrite(df.user, 
-         paste0(address,"resultsmomab/sample1000.ubcf.top1000.csv"),
-         row.names = FALSE, col.names = FALSE, sep = ";", append = TRUE, quote = TRUE)
+         paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"),
+         row.names = FALSE, col.names = FALSE, sep = ",", append = TRUE, quote = FALSE)
 }
+
+# Load UBCF file
+UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
+                          sep = ",",
+                          header = FALSE)
+names(UBCF1k) = c("user", "artist")
 ```
 
 ```{r}
@@ -413,6 +420,16 @@ for(i in 1:length(users)){
 # UCB1 implemented as seen in
 # Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. Machine learning, 47(2-3), 235-256.
 
+# The initial pull on each arm will be done using affinity objective.
+# scalarization is mean between affinity and diversity.
+
+#test
+#user = 7687
+
+user.mab = function(user){
+  UBCF.user = UBCF1k %>% filter(user == user)
+  UBCF.user[1001,]
+}
 
 
 
@@ -431,3 +448,5 @@ for(i in 1:length(users)){
 
 
 
+
+```
