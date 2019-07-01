@@ -139,7 +139,7 @@ list.ILD = function(list.elements){
 # Distance List History Metric (DLH)
 
 distance.function.genre = function(data, history){
-  centroid = genre.centroids[which(genre.centroids$`user-id` == user),]
+  centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
   centroid$`user-id` = NULL
   distance = 0
   for(i in 1:nrow(data)){
@@ -168,8 +168,8 @@ distance.function.contemporaneity = function(data, history){
 
   n = nrow(data)
   m = nrow(history)
-  data$index = c(1:nrow(n))
-  history$index = c(1:nrow(m))
+  data$index = c(1:n)
+  history$index = c(1:m)
   # artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
 
   sim_between_artists_history = function(x, data, history){
@@ -183,6 +183,9 @@ distance.function.contemporaneity = function(data, history){
     
     uc = max(a_data$debut, b_history$debut)
     pt = min(a_data$last, b_history$last)
+    
+    if (ut == pc)
+      return(1)
     
     sim = (pt - uc)/(ut - pc)
     
@@ -423,6 +426,16 @@ names(UBCF1k) = c("user", "artist")
 # The initial pull on each arm will be done using affinity objective.
 # scalarization is mean between affinity and diversity.
 
+  pull.each.arm = function(arm){
+    sum.dlh = 0
+    for(i in 1:3){
+      df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
+      sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+    }
+    return(sum.dlh / 3)
+  }
+
+
 #test
 #u = 7687
 
@@ -440,17 +453,57 @@ user.mab = function(u){
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   arms = artist.data[artist.data$Artist %in% UBCF.user$artist,]
   
+  # Initialize MAB
+  
   # test
   # arm = 1
-  pull.each.arm = function(arm){
-  sum.dlh = 0
-  for(i in 1:3){
-      df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
-      sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
-  }
-    return sum.dlh / 3
+  #a = Sys.time()
+  user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
+  #print(Sys.time() - a)
+  user.arms.diversity = rep(0.0, 1000)
+  
+  user.arms.affinity = rep(1, REC.SIZE) %*% t.default(user.arms.affinity)
+  user.arms.diversity = rep(1, REC.SIZE) %*% t.default(user.arms.diversity)
+  
+  ni = rep(0, NARTISTS)
+  ni = rep(1, REC.SIZE) %*% t.default(ni)
+  
+  scalarize = function(obj1, obj2){
+    # mean
+    return((obj1 + obj2) / 2)
   }
   
+  a = Sys.time()
+  for(iter in 1:NITER) {
+    print(iter)
+    # generate recommendation list
+    # i = 1
+    rec.list = rep(0,REC.SIZE)
+    for(i in 1:REC.SIZE){
+      scalarized.objectives = scalarize(user.arms.affinity[i,], user.arms.diversity[i,])
+      rec.list[i] = which.max(scalarized.objectives)
+      while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
+        #randomly select another item
+        rec.list[i] = sample(1:NARTISTS, 1)
+      }
+      ni[i, rec.list[i]] = ni[i, rec.list[i]] + 1
+    }
+    
+    
+    # run multiobjective function to collect rewards
+    reward = multi.objective(rec.list, artist.data)
+  
+    # update MABs
+    for(i in REC.SIZE){
+      if(ni[i, rec.list[i]] == 1){
+        user.arms.diversity[i,rec.list[i]] = reward[1]
+      } else {
+        user.arms.diversity[i,rec.list[i]] = ((user.arms.diversity[i,rec.list[i]] * ni[i,rec.list[i]] + reward[1]) / (ni[i,rec.list[i]] + 1)) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
+      }
+      user.arms.affinity[i,rec.list[i]] = ((user.arms.affinity[i,rec.list[i]] * ni[i,rec.list[i]] + reward[2]) / (ni[i,rec.list[i]] + 1)) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
+    }
+  }
+  print(Sys.time() - a)
 }
 
 
