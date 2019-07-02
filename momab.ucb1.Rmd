@@ -444,9 +444,10 @@ scalarize = function(obj1, obj2){
 
 #test
 #u = 7687
-#NARTISTS = 15
-
-user.mab = function(u){
+#REC.SIZE = 5
+#NARTISTS = 10
+#niterations = 500
+user.mab = function(u, niterations){
   UBCF.user = UBCF1k %>% filter(user == u)
   
   
@@ -462,23 +463,31 @@ user.mab = function(u){
   
   # Initialize MAB
   
-  # test
-  # arm = 1
-  #a = Sys.time()
-  user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
-  #print(Sys.time() - a)
+  # changing this version
+  # user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
+  user.arms.affinity = rep(1.0, NARTISTS)
   user.arms.diversity = rep(1.0, NARTISTS)
+  
+  # pull each 10 arm block once
+  #a = Sys.time()
+  for(i in 1:(NARTISTS / REC.SIZE)){
+    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+    reward = multi.objective(rec.list, artist.data)
+    user.arms.diversity[rec.list] = reward[1]
+    user.arms.affinity[rec.list] = reward[2]
+  }
+  #print(Sys.time() - a)
   
   user.arms.affinity = rep(1, REC.SIZE) %*% t.default(user.arms.affinity)
   user.arms.diversity = rep(1, REC.SIZE) %*% t.default(user.arms.diversity)
   
-  ni = rep(0, NARTISTS)
+  ni = rep(1, NARTISTS)
   ni = rep(1, REC.SIZE) %*% t.default(ni)
   
   # test
-  # iter = 1
+  # iter = 2
   # a = Sys.time()
-  for(iter in 1:NITER) {
+  for(iter in 1:niterations) {
     # generate recommendation list
     # i=3
     rec.list = rep(0,REC.SIZE)
@@ -501,20 +510,22 @@ user.mab = function(u){
 
     # update MABs
     # test
-    # i = 5
+    # i = 1
     for(i in 1:REC.SIZE){
-      if(ni[i, rec.list[i]] == 1){
-        user.arms.diversity[i,rec.list[i]] = reward[1]
-      } else {
-        user.arms.diversity[i,rec.list[i]] = ((user.arms.diversity[i,rec.list[i]] * ni[i,rec.list[i]] + reward[1]) / (ni[i,rec.list[i]] + 1)) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
-      }
-      user.arms.affinity[i,rec.list[i]] = ((user.arms.affinity[i,rec.list[i]] * ni[i,rec.list[i]] + reward[2]) / (ni[i,rec.list[i]] + 1)) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
+    #  if(ni[i, rec.list[i]] == 1){
+    #    user.arms.diversity[i,rec.list[i]] = reward[1]
+    #  } else {
+      # FIXME
+      user.arms.diversity[i,rec.list[i]] = ((user.arms.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[1]) / (ni[i,rec.list[i]])) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
+    # }
+      user.arms.affinity[i,rec.list[i]] = ((user.arms.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[2]) / (ni[i,rec.list[i]])) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
     }
   }
   # print(Sys.time() - a)
 }
 
-
-
+a = Sys.time()
+user.mab(u, 2000)
+print(Sys.time() - a)
 
 ```
