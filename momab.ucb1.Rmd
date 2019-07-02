@@ -37,6 +37,7 @@ REC.SIZE = 10
 TEST.SIZE = 20
 address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
+NITER = 500
 
 # aspects setup
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
@@ -435,9 +436,15 @@ names(UBCF1k) = c("user", "artist")
     return(sum.dlh / 3)
   }
 
+scalarize = function(obj1, obj2){
+  # mean
+  return((obj1 + obj2) / 2)
+}
+
 
 #test
 #u = 7687
+#NARTISTS = 15
 
 user.mab = function(u){
   UBCF.user = UBCF1k %>% filter(user == u)
@@ -460,7 +467,7 @@ user.mab = function(u){
   #a = Sys.time()
   user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
   #print(Sys.time() - a)
-  user.arms.diversity = rep(0.0, 1000)
+  user.arms.diversity = rep(1.0, NARTISTS)
   
   user.arms.affinity = rep(1, REC.SIZE) %*% t.default(user.arms.affinity)
   user.arms.diversity = rep(1, REC.SIZE) %*% t.default(user.arms.diversity)
@@ -468,23 +475,19 @@ user.mab = function(u){
   ni = rep(0, NARTISTS)
   ni = rep(1, REC.SIZE) %*% t.default(ni)
   
-  scalarize = function(obj1, obj2){
-    # mean
-    return((obj1 + obj2) / 2)
-  }
-  
-  a = Sys.time()
+  # test
+  # iter = 1
+  # a = Sys.time()
   for(iter in 1:NITER) {
-    print(iter)
     # generate recommendation list
-    # i = 1
+    # i=3
     rec.list = rep(0,REC.SIZE)
     for(i in 1:REC.SIZE){
       scalarized.objectives = scalarize(user.arms.affinity[i,], user.arms.diversity[i,])
       rec.list[i] = which.max(scalarized.objectives)
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
-        rec.list[i] = sample(1:NARTISTS, 1)
+        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
       }
       ni[i, rec.list[i]] = ni[i, rec.list[i]] + 1
     }
@@ -492,9 +495,14 @@ user.mab = function(u){
     
     # run multiobjective function to collect rewards
     reward = multi.objective(rec.list, artist.data)
-  
+    fwrite(reward %>% as.data.frame(),
+           paste0(address, "resultsmomab/rewards.user", u, ".txt"),
+           col.names = FALSE, row.names = FALSE, append = TRUE)
+
     # update MABs
-    for(i in REC.SIZE){
+    # test
+    # i = 5
+    for(i in 1:REC.SIZE){
       if(ni[i, rec.list[i]] == 1){
         user.arms.diversity[i,rec.list[i]] = reward[1]
       } else {
@@ -503,7 +511,7 @@ user.mab = function(u){
       user.arms.affinity[i,rec.list[i]] = ((user.arms.affinity[i,rec.list[i]] * ni[i,rec.list[i]] + reward[2]) / (ni[i,rec.list[i]] + 1)) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
     }
   }
-  print(Sys.time() - a)
+  # print(Sys.time() - a)
 }
 
 
