@@ -427,14 +427,14 @@ names(UBCF1k) = c("user", "artist")
 # The initial pull on each arm will be done using affinity objective.
 # scalarization is mean between affinity and diversity.
 
-  pull.each.arm = function(arm){
-    sum.dlh = 0
-    for(i in 1:3){
-      df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
-      sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
-    }
-    return(sum.dlh / 3)
-  }
+  # pull.each.arm = function(arm){
+  #   sum.dlh = 0
+  #   for(i in 1:3){
+  #     df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
+  #     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+  #   }
+  #   return(sum.dlh / 3)
+  # }
 
 scalarize = function(obj1, obj2){
   # mean
@@ -450,7 +450,6 @@ scalarize = function(obj1, obj2){
 user.mab = function(u, niterations){
   UBCF.user = UBCF1k %>% filter(user == u)
   
-  
   # determine user propensity using history ILD
   
   user.prop = propensities %>% filter(userid == u) %>% select(div.contemporaneity, div.locality, div.genre)
@@ -465,35 +464,34 @@ user.mab = function(u, niterations){
   
   # changing this version
   # user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
-  user.arms.affinity = rep(1.0, NARTISTS)
-  user.arms.diversity = rep(1.0, NARTISTS)
+  mean.reward.affinity = rep(1.0, NARTISTS)
+  mean.reward.diversity = rep(1.0, NARTISTS)
   
   # pull each 10 arm block once
   #a = Sys.time()
   for(i in 1:(NARTISTS / REC.SIZE)){
     rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
     reward = multi.objective(rec.list, artist.data)
-    user.arms.diversity[rec.list] = reward[1]
-    user.arms.affinity[rec.list] = reward[2]
+    mean.reward.diversity[rec.list] = reward[1]
+    mean.reward.affinity[rec.list] = reward[2]
   }
   #print(Sys.time() - a)
   
-  user.arms.affinity = rep(1, REC.SIZE) %*% t.default(user.arms.affinity)
-  user.arms.diversity = rep(1, REC.SIZE) %*% t.default(user.arms.diversity)
+  mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
+  mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
   
-  ni = rep(1, NARTISTS)
-  ni = rep(1, REC.SIZE) %*% t.default(ni)
+  ni = matrix(1, REC.SIZE, NARTISTS)
   
+  # generate recommendation list
   # test
-  # iter = 2
+  # iter = 1
   # a = Sys.time()
   for(iter in 1:niterations) {
-    # generate recommendation list
-    # i=3
+    # i=1
+    ucb.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity) + sqrt((2 * log(iter)) / ni)
     rec.list = rep(0,REC.SIZE)
     for(i in 1:REC.SIZE){
-      scalarized.objectives = scalarize(user.arms.affinity[i,], user.arms.diversity[i,])
-      rec.list[i] = which.max(scalarized.objectives)
+      rec.list[i] = which.max(ucb.scalarized[i,])
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
@@ -504,28 +502,25 @@ user.mab = function(u, niterations){
     
     # run multiobjective function to collect rewards
     reward = multi.objective(rec.list, artist.data)
-    fwrite(reward %>% as.data.frame(),
+    df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
+    fwrite(df,
            paste0(address, "resultsmomab/rewards.user", u, ".txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
-    # update MABs
+    # update mean rewards
+    
     # test
     # i = 1
     for(i in 1:REC.SIZE){
-    #  if(ni[i, rec.list[i]] == 1){
-    #    user.arms.diversity[i,rec.list[i]] = reward[1]
-    #  } else {
-      # FIXME
-      user.arms.diversity[i,rec.list[i]] = ((user.arms.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[1]) / (ni[i,rec.list[i]])) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
-    # }
-      user.arms.affinity[i,rec.list[i]] = ((user.arms.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[2]) / (ni[i,rec.list[i]])) + sqrt(2 * log(iter) / ni[i,rec.list[i]])
+      mean.reward.diversity[i,rec.list[i]] = ((mean.reward.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[1]) / (ni[i,rec.list[i]] + 1)) 
+      mean.reward.affinity[i,rec.list[i]] = ((mean.reward.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[2]) / (ni[i,rec.list[i]] + 1)) 
     }
   }
   # print(Sys.time() - a)
 }
 
 a = Sys.time()
-user.mab(u, 2000)
+user.mab(u, 10000)
 print(Sys.time() - a)
 
 ```
