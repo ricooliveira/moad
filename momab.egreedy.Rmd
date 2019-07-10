@@ -1,0 +1,541 @@
+---
+title: "MultiObjective Multi Armed Bandit - UCB1"
+output: html_notebook
+---
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("pbapply")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("ggplot2")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("reshape")) {
+  install.packages("reshape", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(pbapply)
+library(ggplot2)
+library(reshape)
+library(lsa)
+library(recommenderlab)
+
+```
+
+```{r}
+
+REC.SIZE = 10
+TEST.SIZE = 20
+address <- "/home/ricardo/DataScience/moad/"
+NARTISTS = 1000
+NITER = 500
+
+# aspects setup
+# aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
+#for(aspect.index in 1:4){
+aspects.all = c(1,2,3)
+
+```
+
+```{r}
+
+########################################## Metric Functions ##########################################
+
+# Intra List Diversity Metric (ILD)
+
+similarity.function.genre = function(data){
+  return(cosine(t(as.matrix(data))))
+}
+
+similarity.function.locality = function(data){
+  n = nrow(data)
+  m = matrix(0L,n,n)
+  N = nrow(artist.data)
+  for(i in 1:n){
+    for(j in 1:n){
+      if(data[i,"area"] == data[j,"area"]){
+        m[i,j] = 1
+      } else {  
+        m[i,j] = 1 / (1 + log10(N/(as.numeric(freq.area[which(data[i,"area"] == freq.area$area),"total"]))) 
+                        * log10(N/(as.numeric(freq.area[which(data[j,"area"] == freq.area$area),"total"]))))
+      }
+    }
+  }
+  return(m)
+}
+
+similarity.function.contemporaneity = function(data){
+  artistas = rownames(data)
+  data$artista = artistas
+  artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
+
+  sim_between_artists = function(x, data){
+    a = x[1]
+    b = x[2]
+    a_data =  data %>% filter(artista %in% a)
+    b_data =  data %>% filter(artista %in% b)
+    
+    pc = min(a_data$debut, b_data$debut)
+    ut = max(a_data$last, b_data$last)
+    
+    uc = max(a_data$debut, b_data$debut)
+    pt = min(a_data$last, b_data$last)
+    
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
+    return((sim+1)/2)
+  }
+  
+  sim = apply(artist_simi, 1, sim_between_artists, data)
+  artist_simi$sim = sim
+  artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
+  artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
+  
+  matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
+  
+  matrix = matrix %>% as.matrix()
+  return(matrix)
+}
+
+ILD = function(data, similarity.function){
+  k=nrow(data)
+  if(k > 1){
+    sum.dissimilarity = 0
+    similarity.matrix = similarity.function(data)
+    dissimilarity.matrix = 1 - similarity.matrix
+    sum.dissimilarity = sum(colSums(dissimilarity.matrix))
+    return(sum.dissimilarity/(k*(k-1)))
+  }else{
+    return(0)
+  }
+}
+
+list.ILD = function(list.elements){
+  list.elements = list.elements %>% as.data.frame()
+  size = nrow(list.elements)
+  # list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
+  names(list.elements) = "artist"
+  # n = length(aspects.to.diversify)
+  df = artist.data[artist.data$Artist %in% list.elements$artist,]
+  
+  return(c(
+            ILD(df[(aspects[[1]])], similarity.function.contemporaneity),
+            ILD(df[(aspects[[2]])], similarity.function.locality),
+            ILD(df[(aspects[[3]])], similarity.function.genre))
+          )
+}
+
+# Distance List History Metric (DLH)
+
+distance.function.genre = function(data, history){
+  centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
+  centroid$`user-id` = NULL
+  distance = 0
+  for(i in 1:nrow(data)){
+    distance = distance + cosine(as.vector(t(data[i,])),as.vector(t(centroid)))
+  }
+  return(distance/nrow(data))
+}
+
+distance.function.locality = function(data, history){
+  rec <- as.vector(t(data))
+  h <- as.vector(t(history))
+  N = nrow(artist.data)
+  
+  rec.g <- sapply(rec, function(x) {freq.area[which(x == freq.area$area), ]$total})
+  h.g <- sapply(h, function(x) {freq.area[which(x == freq.area$area), ]$total})
+  
+  f <- function(i, j) {
+    ifelse(i == j, 1, 1 / (1 + log10(N/i) * log10(N/j)))
+  }
+  
+  r <- outer(rec.g, h.g, f)
+  return(mean(r))
+}
+
+distance.function.contemporaneity = function(data, history){
+
+  n = nrow(data)
+  m = nrow(history)
+  data$index = c(1:n)
+  history$index = c(1:m)
+  # artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
+
+  sim_between_artists_history = function(x, data, history){
+    a = x[1]
+    b = x[2]
+    a_data =  data %>% filter(index %in% a)
+    b_history =  history %>% filter(index %in% b)
+    
+    pc = min(a_data$debut, b_history$debut)
+    ut = max(a_data$last, b_history$last)
+    
+    uc = max(a_data$debut, b_history$debut)
+    pt = min(a_data$last, b_history$last)
+    
+    if (ut == pc)
+      return(1)
+    
+    sim = (pt - uc)/(ut - pc)
+    
+    return((sim+1)/2)
+  }
+   
+  sum.contemporaneity = 0
+  for(i in 1:n){
+    for(j in 1:m){
+      sum.contemporaneity = sum.contemporaneity + sim_between_artists_history(c(i,j), data, history)
+    }
+  }
+  return(sum.contemporaneity / (m * n))
+}
+
+DLH = function(data, history, distance.function){
+  return(distance.function(data, history))
+}
+
+```
+
+```{r}
+
+########################## DATA LOAD ############################
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+names(data.train) = c("albumid", "artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "regtimestamp", "artistname", "albumname")
+
+# data.test <- fread(paste0(address,"data/LFM_test.txt"), 
+#                     sep = "\t", 
+#                     verbose = TRUE,
+#                     header = TRUE)
+# data.test = as.data.frame(data.test)
+
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
+                     sep = ";", 
+                     verbose = TRUE,
+                     header = TRUE)
+artist.data = as.data.frame(artist.data)
+#test: artist.data = artist.data[1:TEST.SIZE,]
+# data.train = data.train[data.train$artistname %in% artist.data$Artist,]
+
+# Correcting debut year from Rod Stewart - wrong in MusicBrainz
+
+artist.data[which(artist.data$Artist == "The_Pains_of_Being_Pure_at_Heart"),"last"] = 2017
+artist.data[which(artist.data$Artist == "Rod_Stewart"),"debut"] = 1968
+
+# Input 0 in NA values
+
+col = c(3:6)
+for(i in col){
+  artist.data[which(is.na(artist.data[,i])),i] = 0
+}
+
+genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"), 
+                    sep = ",", 
+                    verbose = TRUE,
+                    header = TRUE)
+genre.centroids = as.data.frame(genre.centroids)
+
+users = data.train$userid %>% unique()
+
+```
+
+```{r}
+
+################################ OBJECTIVE FUNCTION ################################
+
+# This function will be executed for a user, with specific data.test, specified aspects to diversify and a determined 
+# list size (TOPN)
+
+# list.elements.index = rec.list
+# artist.data = ubcf.user.artistdata
+
+multi.objective = function(list.elements.index, artist.data, data.train.user){
+   size = length(list.elements.index)
+   list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
+   names(list.elements) = "artist"
+   n = length(aspects.to.diversify)
+   df = artist.data[artist.data$Artist %in% list.elements$artist,]
+   
+   sum.ild = 0
+   for(i in aspects.to.diversify){
+     df.aspect = df[(aspects[[i]])]
+     sum.ild = sum.ild + ILD(data = df.aspect, similarity.function = similarity.functions[[i]])
+   }
+   y1 = (sum.ild / n)
+   
+   if(length(aspects.not.to.diversify) == 0)
+     return(c(y1, 0))
+   
+   sum.dlh = 0
+   for(i in aspects.not.to.diversify){
+     df.aspect = df[(aspects[[i]])]
+     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+   }
+   y2 = (sum.dlh / length(aspects.not.to.diversify))
+   
+   if(length(aspects.to.diversify) == 0)
+     return(c(0, y2))
+   
+   return(c(y1, y2))
+}
+
+```
+
+```{r}
+
+########################################## ASPECTS ##########################################
+
+aspects <- vector(mode="list", length=3)
+names(aspects) <- c("Contemporaneity", "Locality", "Genre")
+aspects[[1]] <- c(5,6); aspects[[2]] <- 4; aspects[[3]] <- 7:ncol(artist.data)
+similarity.functions <- vector(mode="list", length=3)
+names(similarity.functions) <- c("Contemporaneity", "Locality", "Genre")
+similarity.functions[[1]] <- similarity.function.contemporaneity; similarity.functions[[2]] <- similarity.function.locality
+similarity.functions[[3]] <- similarity.function.genre
+
+distance.functions <- vector(mode="list", length=3)
+names(distance.functions) <- c("Contemporaneity", "Locality", "Genre")
+distance.functions[[1]] <- distance.function.contemporaneity; distance.functions[[2]] <- distance.function.locality
+distance.functions[[3]] <- distance.function.genre
+
+
+#################### Calculate frequencies for IOF for type and Locality  ####################
+
+by.area = group_by(artist.data,area)
+freq.area = dplyr::summarise(by.area, total = n())
+
+```
+
+```{r}
+################################# MEDIAN ILD ########################################
+
+# clean zeros and median
+
+all.ilds = fread(paste0(address,"results/daily.propensity.ILD.allusers.txt"), 
+                     sep = ",")
+all.ilds = as.data.frame(all.ilds)
+
+names(all.ilds) = c("day", "contemporaneity", "locality", "genre")
+all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre > 0)
+
+median.ild = c(median(all.ilds.filtered$contemporaneity), median(all.ilds.filtered$locality), median(all.ilds.filtered$genre))
+
+```
+
+
+```{r}
+################################# USER PROPENSITY ########################################
+#
+# Code executed only once, in order to generate the user propensities file
+# 
+# user.propensity = function(user, history, median.ild){
+#   print(user)
+#   user.history = history[which(history$userid == user),] %>% select(artistname)
+#   names(user.history) = "Artist"
+#   user.history = user.history %>% unique()
+#   user.ilds = list.ILD(user.history)
+#   return(user.ilds > median.ild)
+# }
+# 
+# # batch process and save
+# propensities = do.call(rbind, lapply(users, user.propensity, history, median.ild))
+# user.propensities = cbind(users, propensities) %>% as.data.frame()
+# names(user.propensities) = c("userid", "div.contemporaneity", "div.locality", "div.genre")
+# 
+# fwrite(user.propensities,
+#        paste0(address, "resultsmomab/user.propensities.txt"),
+#        col.names = TRUE, row.names = FALSE, quote = TRUE)
+
+propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"), 
+                          sep = ",", 
+                          header = TRUE)
+
+```
+
+```{r}
+############################## UBCF ##############################
+
+# Transforming LFM.artists.available in a rating matrix - Artists rating
+
+# artists.listenned = unique(data.train$artistname)
+# 
+# byUserArtist = group_by(data.train, userid, artistname)
+# sumArtistsUser = summarise(byUserArtist,total = n())
+# 
+# colnames(sumArtistsUser) = c("user", "item", "rating")
+# sumArtistsUser = as.data.frame(sumArtistsUser)
+# affinity.matrix = as(sumArtistsUser,"realRatingMatrix")
+# 
+# Rec.model = Recommender(affinity.matrix,
+#                         method="UBCF", 
+#                         param=list(normalize = "Z-score",
+#                                    method="Cosine",
+#                                    nn=5))
+# 
+# ubcf.top.rerank = vector("list",length(users))
+# 
+# # Generate UBCF Top K Recommendations
+# for(i in 1:length(users)){ # refazer pra tirar o laço. Usar stack. Data frame transforma elementos em fatores, atrapalha o stack
+#   print(i)
+#   recommended.items <- predict(Rec.model, affinity.matrix[as.character(users[i]),], n = NARTISTS)
+#   ubcf.top.rerank[[i]] = as.data.frame(as(recommended.items, "list"))
+# }
+# 
+# # Write UBCF Top K Recommendations
+# for(i in 1:length(users)){
+#   print(i)
+#   df.user = as.data.frame(matrix(as.character(users[i]),K,1))
+#   df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
+#   fwrite(df.user, 
+#          paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"),
+#          row.names = FALSE, col.names = FALSE, sep = ",", append = TRUE, quote = FALSE)
+# }
+
+# Load UBCF file
+UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
+                          sep = ";",
+                          header = FALSE)
+names(UBCF1k) = c("user", "artist")
+```
+
+```{r}
+
+########################################## MAB ##########################################
+
+# Multiobjective Ranked MAB UCB1
+# Ranked MAB implemented as seen in
+# Radlinski, F., Kleinberg, R., & Joachims, T. (2008, July). Learning diverse rankings with multi-armed bandits. In Proceedings of the 25th international conference on Machine learning (pp. 784-791). ACM.
+# UCB1 implemented as seen in
+# Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. Machine learning, 47(2-3), 235-256.
+
+# The initial pull on each arm will be done using affinity objective.
+# scalarization is mean between affinity and diversity.
+
+  # pull.each.arm = function(arm){
+  #   sum.dlh = 0
+  #   for(i in 1:3){
+  #     df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
+  #     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+  #   }
+  #   return(sum.dlh / 3)
+  # }
+
+scalarize = function(obj1, obj2){
+  # mean
+  return((obj1 + obj2) / 2)
+}
+
+EPSILON = 0.1
+RANGE.MAX = 1000
+
+#test
+#u = 7687
+#REC.SIZE = 5
+#NARTISTS = 10
+user.mab = function(u, iterations, EPSILON){
+  UBCF.user = UBCF1k %>% filter(user == u)
+  
+  # determine user propensity using history ILD
+  
+  #user.prop = c(0,0,0)
+  user.prop = propensities %>% filter(userid == u) %>% select(div.contemporaneity, div.locality, div.genre)
+  aspects.to.diversify = which(user.prop == 1)
+  aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
+  
+  artist.data.listenned = unique(data.train[which(data.train$userid == u),]$artistname)
+  data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
+  arms = artist.data[artist.data$Artist %in% UBCF.user$artist,]
+  
+  # Initialize MAB
+  
+  # changing this version
+  # user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
+  mean.reward.affinity = rep(1.0, NARTISTS)
+  mean.reward.diversity = rep(1.0, NARTISTS)
+  
+  # pull each 10 arm block once
+  #a = Sys.time()
+  for(i in 1:(NARTISTS / REC.SIZE)){
+    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+    reward = multi.objective(rec.list, artist.data, data.train.user)
+    mean.reward.diversity[rec.list] = reward[1]
+    mean.reward.affinity[rec.list] = reward[2]
+  }
+  #print(Sys.time() - a)
+  
+  mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
+  mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
+  
+  ni = matrix(1, REC.SIZE, NARTISTS)
+  
+  # generate recommendation list
+  # test
+  # iter = 1
+  # a = Sys.time()
+  for(iter in 1:iterations) {
+    # i=1
+    
+    rec.list = rep(0,REC.SIZE)
+    for(i in 1:REC.SIZE){
+      ucb.scalarized = scalarize(mean.reward.diversity, mean.reward.affinity)
+      drawn = runif(1, 0, RANGE.MAX)
+      if(drawn > EPSILON * RANGE.MAX){
+        rec.list[i] = which.max(ucb.scalarized[i,])
+      } else {
+        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
+      }
+      while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
+        #randomly select another item
+        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
+      }
+      ni[i, rec.list[i]] = ni[i, rec.list[i]] + 1
+    }
+
+    # run multiobjective function to collect rewards
+    reward = multi.objective(rec.list, artist.data, data.train.user)
+    df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
+    fwrite(df,
+           paste0(address, "resultsmomabgreedy/rewards.user", u, ".egreedy.txt"),
+           col.names = FALSE, row.names = FALSE, append = TRUE)
+
+    # update mean rewards
+    
+    # test
+    # i = 1
+    for(i in 1:REC.SIZE){
+      mean.reward.diversity[i,rec.list[i]] = ((mean.reward.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[1]) / (ni[i,rec.list[i]])) 
+      mean.reward.affinity[i,rec.list[i]] = ((mean.reward.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[2]) / (ni[i,rec.list[i]])) 
+    }
+    # fwrite(mean.reward.diversity %>% signif(6) %>% as.data.frame(),
+    #        paste0(address, "resultsmomab/rewards.user", u, ".egreedy.txt"),
+    #        col.names = FALSE, row.names = FALSE, append = TRUE)
+  }
+  # print(Sys.time() - a)
+}
+
+# a = Sys.time()
+# user.mab(users[1], 1000, EPSILON)
+# print(Sys.time() - a)
+
+a = Sys.time()
+pblapply(users, user.mab, 1000, EPSILON)
+print(Sys.time() - a)
+
+
+```
