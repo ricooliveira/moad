@@ -35,7 +35,7 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-address <- "/home/ricardo/DataScience/moad/"
+address <- "/local/Scripts/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -265,7 +265,8 @@ users = data.train$userid %>% unique()
 # list.elements.index = rec.list
 # artist.data = ubcf.user.artistdata
 
-multi.objective = function(list.elements.index, artist.data, data.train.user){
+multi.objective = function(list.elements.index, artist.data, data.train.user, aspects.to.diversify){
+   aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
    size = length(list.elements.index)
    list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
    names(list.elements) = "artist"
@@ -456,7 +457,6 @@ user.mab = function(u, iterations, EPSILON){
   #user.prop = c(0,0,0)
   user.prop = propensities %>% filter(userid == u) %>% select(div.contemporaneity, div.locality, div.genre)
   aspects.to.diversify = which(user.prop == 1)
-  aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
   
   artist.data.listenned = unique(data.train[which(data.train$userid == u),]$artistname)
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
@@ -473,7 +473,7 @@ user.mab = function(u, iterations, EPSILON){
   #a = Sys.time()
   for(i in 1:(NARTISTS / REC.SIZE)){
     rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data, data.train.user)
+    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify)
     mean.reward.diversity[rec.list] = reward[1]
     mean.reward.affinity[rec.list] = reward[2]
   }
@@ -508,7 +508,7 @@ user.mab = function(u, iterations, EPSILON){
     }
 
     # run multiobjective function to collect rewards
-    reward = multi.objective(rec.list, artist.data, data.train.user)
+    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
            paste0(address, "resultsmomabgreedy/rewards.user", u, ".egreedy.txt"),
