@@ -534,7 +534,7 @@ user.mab = function(u, iterations, EPSILON){
 # print(Sys.time() - a)
 
 a = Sys.time()
-pblapply(users, user.mab, 1000, EPSILON)
+pblapply(users[179:997], user.mab, 1000, EPSILON)
 print(Sys.time() - a)
 
 
