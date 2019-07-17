@@ -1,0 +1,53 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+
+library(readr)
+library(data.table)
+library(dplyr)
+
+```
+
+```{r}
+
+address = "/home/ricardo/DataScience"
+
+objectives = fread(paste0(address, "/results/results_word2vec/objectives.sample1000.nsga.fixed.top10.pop10.gen20.allscenarios.txt"),
+        sep = ",", 
+        verbose = FALSE,
+        header = FALSE)
+names(objectives) = c("userid", "diversity", "affinity", "scenario")
+
+propensities = fread(paste0(address, "/moad/resultsmomab/user.propensities.txt"), 
+                          sep = ",", 
+                          header = TRUE)
+
+```
+
+```{r}
+
+cenarios.decimal = function(cenarios){
+  vec2dec = function(vec){
+    #vec = vec[-1]
+    Reduce(function(x,y) x*2+y, vec)  
+  }
+  cenarios$scenario = cenarios %>% apply(1, vec2dec)
+  return(cenarios)
+}
+
+```
+
+```{r}
+
+propensities.scenarios = cbind(propensities$userid, cenarios.decimal(propensities[,2:4]))
+names(propensities.scenarios)[1] = "userid"
+
+user.results.nsga = inner_join(propensities.scenarios, objectives) %>% select("userid", "diversity", "affinity")
+
+fwrite(user.results.nsga %>% as.data.frame(),
+       paste0(address, "/moad/resultsnsga/objectives.nsga.propensities.txt"),
+              row.names = TRUE, col.names = FALSE, sep = "\t", append = FALSE, quote = FALSE)
+```
+

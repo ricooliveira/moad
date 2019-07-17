@@ -27,7 +27,6 @@ library(pbapply)
 library(ggplot2)
 library(reshape)
 library(lsa)
-library(recommenderlab)
 
 ```
 
@@ -35,7 +34,7 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-address <- "/local/Scripts/moad/"
+address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -370,72 +369,12 @@ propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"),
 ```
 
 ```{r}
-############################## UBCF ##############################
-
-# Transforming LFM.artists.available in a rating matrix - Artists rating
-
-# artists.listenned = unique(data.train$artistname)
-# 
-# byUserArtist = group_by(data.train, userid, artistname)
-# sumArtistsUser = summarise(byUserArtist,total = n())
-# 
-# colnames(sumArtistsUser) = c("user", "item", "rating")
-# sumArtistsUser = as.data.frame(sumArtistsUser)
-# affinity.matrix = as(sumArtistsUser,"realRatingMatrix")
-# 
-# Rec.model = Recommender(affinity.matrix,
-#                         method="UBCF", 
-#                         param=list(normalize = "Z-score",
-#                                    method="Cosine",
-#                                    nn=5))
-# 
-# ubcf.top.rerank = vector("list",length(users))
-# 
-# # Generate UBCF Top K Recommendations
-# for(i in 1:length(users)){ # refazer pra tirar o laço. Usar stack. Data frame transforma elementos em fatores, atrapalha o stack
-#   print(i)
-#   recommended.items <- predict(Rec.model, affinity.matrix[as.character(users[i]),], n = NARTISTS)
-#   ubcf.top.rerank[[i]] = as.data.frame(as(recommended.items, "list"))
-# }
-# 
-# # Write UBCF Top K Recommendations
-# for(i in 1:length(users)){
-#   print(i)
-#   df.user = as.data.frame(matrix(as.character(users[i]),K,1))
-#   df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
-#   fwrite(df.user, 
-#          paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"),
-#          row.names = FALSE, col.names = FALSE, sep = ",", append = TRUE, quote = FALSE)
-# }
-
-# Load UBCF file
-UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
-                          sep = ";",
-                          header = FALSE)
-names(UBCF1k) = c("user", "artist")
-```
-
-```{r}
 
 ########################################## MAB ##########################################
 
 # Multiobjective Ranked MAB UCB1
 # Ranked MAB implemented as seen in
 # Radlinski, F., Kleinberg, R., & Joachims, T. (2008, July). Learning diverse rankings with multi-armed bandits. In Proceedings of the 25th international conference on Machine learning (pp. 784-791). ACM.
-# UCB1 implemented as seen in
-# Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. Machine learning, 47(2-3), 235-256.
-
-# The initial pull on each arm will be done using affinity objective.
-# scalarization is mean between affinity and diversity.
-
-  # pull.each.arm = function(arm){
-  #   sum.dlh = 0
-  #   for(i in 1:3){
-  #     df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
-  #     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
-  #   }
-  #   return(sum.dlh / 3)
-  # }
 
 scalarize = function(obj1, obj2){
   # mean
@@ -443,15 +382,13 @@ scalarize = function(obj1, obj2){
 }
 
 EPSILON = 0.1
-RANGE.MAX = 1000
+NARTISTS = nrow(artist.data)
 
 #test
 #u = 7687
 #REC.SIZE = 5
 #NARTISTS = 10
 user.mab = function(u, iterations, EPSILON){
-  UBCF.user = UBCF1k %>% filter(user == u)
-  
   # determine user propensity using history ILD
   
   #user.prop = c(0,0,0)
@@ -460,7 +397,7 @@ user.mab = function(u, iterations, EPSILON){
   
   artist.data.listenned = unique(data.train[which(data.train$userid == u),]$artistname)
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
-  arms = artist.data[artist.data$Artist %in% UBCF.user$artist,]
+  arms = artist.data$Artist
   
   # Initialize MAB
   
@@ -494,8 +431,8 @@ user.mab = function(u, iterations, EPSILON){
     rec.list = rep(0,REC.SIZE)
     for(i in 1:REC.SIZE){
       ucb.scalarized = scalarize(mean.reward.diversity, mean.reward.affinity)
-      drawn = runif(1, 0, RANGE.MAX)
-      if(drawn > EPSILON * RANGE.MAX){
+      drawn = runif(1, 0, NARTISTS)
+      if(drawn > EPSILON * NARTISTS){
         rec.list[i] = which.max(ucb.scalarized[i,])
       } else {
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
@@ -511,7 +448,7 @@ user.mab = function(u, iterations, EPSILON){
     reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomabgreedy/rewards.user", u, ".egreedy.txt"),
+           paste0(address, "resultsmomabgreedynocf/rewards.user", u, ".egreedy.200iter.txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
@@ -534,7 +471,8 @@ user.mab = function(u, iterations, EPSILON){
 # print(Sys.time() - a)
 
 a = Sys.time()
-pblapply(users, user.mab, 1000, EPSILON)
+#user.mab(7687, 1000, EPSILON)
+pblapply(users[17:997], user.mab, 200, EPSILON)
 print(Sys.time() - a)
 
 
