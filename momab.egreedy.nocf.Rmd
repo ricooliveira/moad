@@ -381,7 +381,7 @@ scalarize = function(obj1, obj2){
   return((obj1 + obj2) / 2)
 }
 
-EPSILON = 0.1
+EPSILON = 0.3
 NARTISTS = nrow(artist.data)
 
 #test
@@ -406,12 +406,12 @@ user.mab = function(u, iterations, EPSILON){
   
   # pull each 10 arm block once
   #a = Sys.time()
-  for(i in 1:(NARTISTS / REC.SIZE)){
-    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
-    mean.reward.diversity[rec.list] = reward[1]
-    mean.reward.affinity[rec.list] = reward[2]
-  }
+  # for(i in 1:(NARTISTS / REC.SIZE)){
+  #   rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+  #   reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
+  #   mean.reward.diversity[rec.list] = reward[1]
+  #   mean.reward.affinity[rec.list] = reward[2]
+  # }
   #print(Sys.time() - a)
   
   mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
@@ -446,7 +446,7 @@ user.mab = function(u, iterations, EPSILON){
     reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomabgreedynocf/rewards.user", u, ".egreedy.", iterations,"iter.txt"),
+           paste0(address, "resultsmomabgreedynocf/rewards.user", u, ".egreedy.", iterations,"iter.epsilon03.noinit.txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
@@ -469,8 +469,9 @@ user.mab = function(u, iterations, EPSILON){
 # print(Sys.time() - a)
 
 a = Sys.time()
-#user.mab(7687, 1000, EPSILON)
-pblapply(users, user.mab, 200, EPSILON)
+#EPSILON = 0.3
+#user.mab(7687, 201, EPSILON)
+pblapply(users[1:30], user.mab, 1000, EPSILON)
 print(Sys.time() - a)
 
 

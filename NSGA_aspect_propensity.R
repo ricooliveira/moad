@@ -24,8 +24,8 @@ library(reshape)
 TOPN = 10
 TOPN_RERANK = 50
 # address <- "/local/Scripts/word2vec/MOAD/"
-address <- "/local/datasets/"
-
+# address <- "/local/datasets/"
+address <- "/home/ricardo/DataScience/moad/"
 
 ########################## ASPECTS SETUP ##########################
 # aspects: 1 = "Contemporaneity", 2 = "Locality", 3 = "Genre")
@@ -58,7 +58,7 @@ similarity.function.contemporaneity = function(data){
   artistas = rownames(data)
   data$artista = artistas
   artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
-
+  
   sim_between_artists = function(x, data){
     a = x[1]
     b = x[2]
@@ -82,7 +82,7 @@ similarity.function.contemporaneity = function(data){
   artist_simi$sim = sim
   artist_simi_replicated = artist_simi %>% select(V1=V2, V2=V1, sim)
   artists_identity = data.frame(V1 = artistas, V2 = artistas, sim = 1)
-  artist_simi = bind_rows(artist_simi, artist_simi_replicated, artists_identity)
+  artist_simi = rbind(artist_simi, artist_simi_replicated, artists_identity)
   
   matrix = artist_simi %>% cast(V1~V2, mean, value = "sim") %>% select(-V1)
   
@@ -130,14 +130,14 @@ distance.function.locality = function(data, history){
   return(mean(r))
 }
 
-distance.function.contemporaneity = function(data, history){
-
+distance.function.contemporaneity = function(u, data, history){
+  
   n = nrow(data)
   m = nrow(history)
   data$index = c(1:n)
   history$index = c(1:m)
   # artist_simi = combn(artistas, 2) %>% t() %>% as_data_frame()
-
+  
   sim_between_artists_history = function(x, data, history){
     a = x[1]
     b = x[2]
@@ -157,7 +157,7 @@ distance.function.contemporaneity = function(data, history){
     
     return((sim+1)/2)
   }
-   
+  
   sum.contemporaneity = 0
   for(i in 1:n){
     for(j in 1:m){
@@ -547,7 +547,7 @@ boundedSBXover.altered =function (parent_chromosome, lowerBounds, upperBounds, c
 
 ########################################## DATA LOAD ##########################################
 
-artist.data <- fread(paste0(address,"experimento/artist.data.txt"), 
+artist.data <- fread(paste0(address,"data/artist.data.txt"), 
                      sep = ";", 
                      verbose = TRUE,
                      header = TRUE)
@@ -579,45 +579,28 @@ for(i in col){
 
 # Recommendations load
 
-ubcf.top10 <- fread(paste0(address,"experimento/sample1000.ubcf.top10.csv"), 
-                    sep = ";", 
-                    verbose = TRUE,
-                    header = FALSE,
-                    col.names = c("user", "artist"))
-ubcf.top10 = as.data.frame(ubcf.top10)
-
-td.top10 <- fread(paste0(address,"experimento/sample1000.topic-diversification.top10.txt"),
-                    sep = "\t",
-                    verbose = TRUE,
-                    header = FALSE,
-                    col.names = c("user", "artist"))
-td.top10 = as.data.frame(td.top10)
-
-
-data.train <- fread(paste0(address,"experimento/LFM_train.txt"), 
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
                    sep = "\t", 
                    verbose = TRUE,
                    header = TRUE)
 data.train = as.data.frame(data.train)
 
-data.test <- fread(paste0(address,"experimento/LFM_test.txt"), 
+data.test <- fread(paste0(address,"data/LFM_test.txt"), 
                     sep = "\t", 
                     verbose = TRUE,
                     header = TRUE)
 data.test = as.data.frame(data.test)
 
-genre.centroids <- fread(paste0(address,"experimento/user.history.centroids.txt"), 
+genre.centroids <- fread(paste0(address,"data/user.history.centroids.txt"), 
                          sep = ",", 
                          verbose = TRUE,
                          header = TRUE)
 genre.centroids = as.data.frame(genre.centroids)
 
-users.propensity <- fread("/local/Scripts/word2vec/MOAD/data/user.propensity.entropy.txt", 
-                          sep = "\t", 
-                          header = TRUE)
+users.propensity = fread(paste0(address,"resultsmomab/user.propensities.txt"), 
+                     sep = ",", 
+                     header = TRUE)
 users.propensity = as.data.frame(users.propensity)
-
-
 
 #################### Calculate frequencies for IOF for type and Locality  ####################
 
@@ -678,9 +661,17 @@ distance.functions[[3]] <- distance.function.genre
 
 ################################ Parallel Setup ################################
 
-args <- commandArgs(trailingOnly = TRUE)
+# args <- commandArgs(trailingOnly = TRUE)
+
+################################ UBCF 1000 load ################################
+
+UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
+               sep = ";",
+               header = FALSE)
+names(UBCF1k) = c("user", "artist")
 
 ################################ NSGA-II ################################
+
 
 start.time <- Sys.time()
 
@@ -688,28 +679,26 @@ aspects.all = c(1,2,3)
 scenarios = data.frame(c(0,0,0,0,1,1,1,1),c(0,0,1,1,0,0,1,1),c(0,1,0,1,0,1,0,1))
 names(scenarios) = c("Contemporaneity", "Locality", "Genre")
 N = nrow(artist.data)
-#users = unique(ubcf.top10$user)
-users = user.propensity$users
-users.propensity = user.propensity
+users = users.propensity$userid
 user = 0
+# test
+# u = users[2]
 for(u in users){
   user = user + 1; print(user)
-  #aspects.to.diversify = which(scenarios[args[1],] == 1)
+  UBCF.user = UBCF1k %>% filter(user == u)
+  
   aspects.to.diversify = users.propensity %>% filter(users %in% u) %>% t() %>% as.numeric()
   aspects.to.diversify = which(aspects.to.diversify == 1) -1
   aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
   
   artist.data.listenned = unique(data.train[which(data.train$`user-id` == u),]$`artist-name`)
-  artist.data.new = artist.data[-which(artist.data$Artist %in% artist.data.listenned),]
-  # ubcf.index = which(artist.data.new$Artist %in% ubcf.top10[which(ubcf.top10$user == u),"artist"])
-  # td.index = which(artist.data.new$Artist %in% as.data.frame(td.top10[which(td.top10$user == u),"artist"])[1:10,]) #adapted to eliminate duplicated recommendation
+  artist.data.new = artist.data[-which(artist.data$Artist %in% artist.data.listenned),] %>% filter(Artist %in% UBCF.user$artist)
 
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   
   results <- nsga2R.altered.random(fn=multi.objective, varNo=TOPN, objDim=2, lowerBounds=rep(1,TOPN),
               upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
-              generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10) #,
-              # ubcf.index, td.index)
+              generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
 
   nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
   best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
@@ -722,7 +711,7 @@ for(u in users){
                    as.data.frame(artist.data.new[results$parameters[nondominated,][best.solution,],"Artist"]))
   }
   fwrite(df,
-         paste0(address,"experimento/results_word2vec/sample1000.nsga.fixed.top10.pop10.gen20.faltam.txt"), #replace unique for args[1] when parallelizing
+         paste0(address,"results_nsga_cf1000/sample1000.nsga.propensity.top10.pop10.gen20.txt"), #replace unique for args[1] when parallelizing
          col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE)
 }
 end.time <- Sys.time()
