@@ -665,8 +665,8 @@ distance.functions[[3]] <- distance.function.genre
 
 ################################ UBCF 1000 load ################################
 
-UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
-               sep = ";",
+UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.nn100.top1000.txt"), 
+               sep = ",",
                header = FALSE)
 names(UBCF1k) = c("user", "artist")
 

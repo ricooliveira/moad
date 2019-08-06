@@ -35,7 +35,8 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-address <- "/local/Scripts/moad/"
+# address <- "/local/Scripts/moad/"
+address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -374,7 +375,7 @@ propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"),
 
 # Transforming LFM.artists.available in a rating matrix - Artists rating
 
-# artists.listenned = unique(data.train$artistname)
+#artists.listenned = unique(data.train$artistname)
 # 
 # byUserArtist = group_by(data.train, userid, artistname)
 # sumArtistsUser = summarise(byUserArtist,total = n())
@@ -384,10 +385,10 @@ propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"),
 # affinity.matrix = as(sumArtistsUser,"realRatingMatrix")
 # 
 # Rec.model = Recommender(affinity.matrix,
-#                         method="UBCF", 
+#                         method="UBCF",
 #                         param=list(normalize = "Z-score",
 #                                    method="Cosine",
-#                                    nn=5))
+#                                    nn=10))
 # 
 # ubcf.top.rerank = vector("list",length(users))
 # 
@@ -401,15 +402,15 @@ propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"),
 # # Write UBCF Top K Recommendations
 # for(i in 1:length(users)){
 #   print(i)
-#   df.user = as.data.frame(matrix(as.character(users[i]),K,1))
+#   df.user = as.data.frame(matrix(as.character(users[i]), NARTISTS, 1))
 #   df.user = bind_cols(df.user, ubcf.top.rerank[[i]])
-#   fwrite(df.user, 
-#          paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"),
+#   fwrite(df.user,
+#          paste0(address,"resultsmomab/sample1000.ubcf.nn100.top1000.txt"),
 #          row.names = FALSE, col.names = FALSE, sep = ",", append = TRUE, quote = FALSE)
 # }
 
 # Load UBCF file
-UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.top1000.txt"), 
+UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.nn100.top1000.txt"), 
                           sep = ";",
                           header = FALSE)
 names(UBCF1k) = c("user", "artist")
