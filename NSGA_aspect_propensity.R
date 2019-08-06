@@ -130,7 +130,7 @@ distance.function.locality = function(data, history){
   return(mean(r))
 }
 
-distance.function.contemporaneity = function(u, data, history){
+distance.function.contemporaneity = function(data, history){
   
   n = nrow(data)
   m = nrow(history)
@@ -676,9 +676,9 @@ names(UBCF1k) = c("user", "artist")
 start.time <- Sys.time()
 
 aspects.all = c(1,2,3)
-scenarios = data.frame(c(0,0,0,0,1,1,1,1),c(0,0,1,1,0,0,1,1),c(0,1,0,1,0,1,0,1))
-names(scenarios) = c("Contemporaneity", "Locality", "Genre")
-N = nrow(artist.data)
+# scenarios = data.frame(c(0,0,0,0,1,1,1,1),c(0,0,1,1,0,0,1,1),c(0,1,0,1,0,1,0,1))
+# names(scenarios) = c("Contemporaneity", "Locality", "Genre")
+# N = nrow(artist.data)
 users = users.propensity$userid
 user = 0
 # test
@@ -700,7 +700,7 @@ for(u in users){
               upperBounds=rep(nrow(artist.data.new),TOPN), popSize=10, tourSize=2,
               generations=20, cprob=0.9, XoverDistIdx=20, mprob=0.1, MuDistIdx=10)
 
-  nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
+nondominated = (fastNonDominatedSorting(results$objectives))[[1]]
   best.solution = which.max(results$objectives[nondominated,1]+results$objectives[nondominated,2])
   
   if(length(nondominated) == 1){
