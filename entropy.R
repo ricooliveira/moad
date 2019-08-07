@@ -208,11 +208,11 @@ barplot.scenarios
 ################################# PREPARE FOR DOC2VEC #######################################
 #############################################################################################
 
-LFM = LFM[order(LFM$userid, LFM$timestamp),]
-H = inner_join(LFM, artist.data, by = "artistname")
-meltH = melt(H, id.vars = c("userid", "area", "debut", "last", "timestamp"), measure.vars = c(9:ncol(H)))
-meltH = meltH[which(meltH$value == 1), c(1:6)]
-
-fwrite(meltH, 
-       paste0(address,"experimento/data.for.word2vec.txt"), 
-       row.names = FALSE, col.names = TRUE, sep = "\t", na = "")
+# LFM = LFM[order(LFM$userid, LFM$timestamp),]
+# H = inner_join(LFM, artist.data, by = "artistname")
+# meltH = melt(H, id.vars = c("userid", "area", "debut", "last", "timestamp"), measure.vars = c(9:ncol(H)))
+# meltH = meltH[which(meltH$value == 1), c(1:6)]
+# 
+# fwrite(meltH, 
+#        paste0(address,"experimento/data.for.word2vec.txt"), 
+#        row.names = FALSE, col.names = TRUE, sep = "\t", na = "")

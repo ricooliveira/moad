@@ -17,9 +17,11 @@ library(pbapply)
 ```{r}
 # Constants
 
-address <- "/local/Scripts/moad/"
+# address <- "/local/Scripts/moad/"
+address <- "/home/ricardo/DataScience/moad/"
+
 ```
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
 ```{r}
 
 # Data Load
@@ -166,6 +168,9 @@ similarity.functions[[3]] <- similarity.function.genre
 ```
 
 ```{r}
+
+# daily ILDs generation - do not run - already generated
+
 users = data.train$`user-id` %>% unique()
 #user = users[11]
 
@@ -194,7 +199,7 @@ for(user in users) {
 
 ```{r}
 
-# single file
+# single file - do not run
 
 nm <- list.files(path=paste0(address, "results"))
 
@@ -220,12 +225,21 @@ all.ilds.filtered = filter(all.ilds, contemporaneity > 0 & locality > 0 & genre 
 median.contemporaneity = median(all.ilds.filtered$contemporaneity)
 median.locality = median(all.ilds.filtered$locality)
 median.genre = median(all.ilds.filtered$genre)
+sd.contemporaneity = sd(all.ilds.filtered$contemporaneity)
+sd.locality = all.ilds.filtered$locality
+sd.genre = all.ilds.filtered$genre
+
+# adding distribution graphics
+
+contemporaneity.ild.distribution = ggplot(all.ilds.filtered, aes(x = contemporaneity)) + geom_density()
+locality.ild.distribution = ggplot(all.ilds.filtered, aes(x = locality)) + geom_density()
+genre.ild.distribution = ggplot(all.ilds.filtered, aes(x = genre)) + geom_density()
 
 ```
 
 ```{r}
 
-# daily graphics
+# daily graphics - do not run
 
 users = data.train$`user-id` %>% unique()
 
@@ -249,7 +263,7 @@ pblapply(users, generate.graphs.daily.ild)
 
 ```{r}
 
-# daily boxplots
+# daily boxplots = do not run
 
 days.grouped = group_by(all.ilds.filtered, day)
 users.by.day = summarise(days.grouped, total = n())
@@ -272,7 +286,7 @@ ggsave(paste0(address,"results/month.boxplot.pdf"), width = 30, height = 10, dpi
 
 ```{r}
 
-# scenario plots
+# scenario plots - do not run
 
 cenarios.decimal = function(cenarios){
   vec2dec = function(vec){
@@ -307,6 +321,27 @@ generate.graphs.daily.scenarios = function(user){
 }
 
 pblapply(users, generate.graphs.daily.scenarios)
+
+```
+
+```{r}
+
+user.propensity = function(user, history){
+  print(user)
+  user.history = history[which(history$`user-id` == user),] %>% select(`artist-name`)
+  names(user.history) = "Artist"
+  user.history = user.history %>% unique()
+  user.ilds = list.ILD(user.history)
+  fwrite(c(user, user.ilds) %>% t() %>% as.data.frame(),
+        paste0(address,"resultsmomab/allhistory.ILD.allusers.txt"), 
+        col.names = FALSE, row.names = FALSE, quote = TRUE, append = TRUE) 
+}
+
+# batch process and save
+# test
+# users = users[1]
+
+lapply(users, user.propensity, data.train)
 
 ```
 
