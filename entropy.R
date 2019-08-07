@@ -8,7 +8,8 @@ library(pbapply)
 
 ########################## CONSTANTS ##########################
 
-address <- "/local/Scripts/moad/"
+# address <- "/local/Scripts/moad/"
+address <- "/home/ricardo/DataScience/moad/"
 size_sample = 1000
 
 ########################## FUNCTION ##########################
@@ -69,8 +70,9 @@ LFM <- fread(paste0(address,"data/LFM_train.txt"),
                     verbose = TRUE,
                     na.strings = "")
 LFM = as.data.frame(LFM)
-names(LFM) = c("artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname")
-LFM[,4:8] = NULL
+names(LFM) = c("albumid", "artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "registered", "artistname", "albumname")
+LFM = LFM %>% select(userid, timestamp, artistname)
+#LFM[,4:8] = NULL
 
 artist.data <- fread(paste0(address,"data/artist.data.txt"), 
              sep = ";", 
@@ -79,27 +81,33 @@ artist.data <- fread(paste0(address,"data/artist.data.txt"),
 artist.data = as.data.frame(artist.data)
 names(artist.data)[2] = c("artistname")
 
+# Correct data 
+artist.data[which(artist.data$artistname == "The Pains of Being Pure at Heart"),"last"] = 2017
+artist.data[which(artist.data$artistname == "Rod Stewart"),"debut"] = 1968
+
+# artist.data.decades = artist.data[,c("id", "artistname", "debut", "last")]
+
+for(i in 1:nrow(artist.data)){
+  artist.data[i,"debut"] = decade(artist.data[i,"debut"])
+  artist.data[i,"last"] = decade(artist.data[i,"last"])
+}
+
+users = LFM$userid %>% unique()
+
 ########################## ENTROPY GENRE ##########################
 
-users = as.list(unique(LFM$userid))
 # users.histories = as.data.frame(do.call(rbind, lapply(users, genre.meltcast)))
 # fwrite(users.histories, 
 #        paste0(address,"experimento/user.histories.genre.txt"),
 #        row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
 
-users.histories = fread(paste0(address,"experimento/user.histories.genre.txt"), 
+users.histories = fread(paste0(address,"data/user.histories.genre.txt"), 
                         sep = "\t")
 
 genre.entropy.result = cbind(users.histories[,1],as.data.frame(apply(users.histories[,2:ncol(users.histories)], 1, entropy)))
 names(genre.entropy.result) = c("userid","entropy")
 
 ########################## ENTROPY CONTEMP ##########################
-
-# Correct data 
-artist.data[which(artist.data$artistname == "The Pains of Being Pure at Heart"),"last"] = 2017
-artist.data[which(artist.data$artistname == "Rod Stewart"),"debut"] = 1968
-
-artist.data.decades = artist.data[,c("id", "artistname", "debut", "last")]
 
 # x = as.data.frame(do.call(rbind, apply(artist.data$debut, 2, decade)))
 # x = do.call(decade,as.list(artist.data$debut))
@@ -108,12 +116,6 @@ artist.data.decades = artist.data[,c("id", "artistname", "debut", "last")]
 #   artist.data.decades[i,"debut"] = decade(artist.data.decades[i,"debut"])
 #   artist.data.decades[i,"last"] = decade(artist.data.decades[i,"last"])
 # }
-
-
-for(i in 1:nrow(artist.data)){
-  artist.data[i,"debut"] = decade(artist.data[i,"debut"])
-  artist.data[i,"last"] = decade(artist.data[i,"last"])
-}
 
 entropia = pbsapply(users, contemporaneity.entropy)
 contemporaneity.entropy.result = cbind(users, entropia) %>% as_data_frame()
@@ -128,8 +130,8 @@ locality.entropy.result = cbind(users, entropia) %>% as_data_frame()
 
 ########################## BARPLOT ENTROPY ##########################
 
-locality.entropy.result$entropia = as.numeric(locality.entropy.result$entropy)
-contemporaneity.entropy.result$entropia = as.numeric(contemporaneity.entropy.result$entropy)
+# locality.entropy.result$entropia = as.numeric(locality.entropy.result$entropy)
+# contemporaneity.entropy.result$entropia = as.numeric(contemporaneity.entropy.result$entropy)
 
 genre.plot = ggplot(data=genre.entropy.result, aes(x = reorder(userid, -entropy), y = entropy)) +
   geom_bar(stat="identity")
@@ -149,17 +151,30 @@ locality.entropy.result = bind_cols(locality.entropy.result, as.data.frame(rep("
 names(locality.entropy.result) = c("userid", "entropy", "aspect")
 
 entropy.results = rbind(genre.entropy.result, contemporaneity.entropy.result, locality.entropy.result)
-boxplot(entropy ~ aspect, data = entropy.results)
 boxplot.entropy = ggplot(entropy.results, aes(x = aspect, y = entropy, fill=aspect)) +
                     geom_boxplot()
+genre.boxplot.entropy = ggplot(genre.entropy.result, aes(x = aspect, y = entropy, fill=aspect)) +
+  geom_boxplot()
+
+genre.entropy.distribution = ggplot(genre.entropy.result, aes(x = entropy)) + geom_density()
+genre.entropy.sd = sd(genre.entropy.result$entropy)
+genre.entropy.mean = mean(genre.entropy.result$entropy)
+
+locality.entropy.distribution = ggplot(locality.entropy.result, aes(x = entropy)) + geom_density()
+locality.entropy.sd = sd(locality.entropy.result$entropy)
+locality.entropy.mean = mean(locality.entropy.result$entropy)
+
+contemporaneity.entropy.distribution = ggplot(contemporaneity.entropy.result, aes(x = entropy)) + geom_density()
+contemporaneity.entropy.sd = sd(contemporaneity.entropy.result$entropy)
+contemporaneity.entropy.mean = mean(contemporaneity.entropy.result$entropy)
 
 ############################ SCENARIOS ############################
 
-a = users %>% as.data.frame() %>% t()
-scenarios = data.frame(userid = a, contemporaneity = rep(0, nrow(a)), locality = rep(0, nrow(a)), genre = rep(0, nrow(a)))
-medians = c(apply(contemporaneity.entropy.result$entropia %>% as.data.frame() %>% t(), 2, median), 
-            apply(locality.entropy.result$entropia %>% as.data.frame() %>% t(), 2, median),
-            apply(genre.entropy.result[,"entropy"], 2, median))
+scenarios = data.frame(userid = users, contemporaneity = rep(0, length(users)), locality = rep(0, length(users)), 
+                       genre = rep(0, length(users)))
+medians = c(median(contemporaneity.entropy.result$entropy), 
+            median(locality.entropy.result$entropy),
+            median(genre.entropy.result$entropy))
 names(medians) = c("contemporaneity", "locality", "genre")
 for(i in 1:nrow(scenarios)){
   if(contemporaneity.entropy.result[i,2] > medians[1])
@@ -171,7 +186,7 @@ for(i in 1:nrow(scenarios)){
 }
 
 fwrite(scenarios, 
-       "/local/Scripts/word2vec/MOAD/data/user.propensity.entropy.txt",
+       paste0(address, "data/user.propensity.entropy.median.txt"),
        sep = "\t",
        row.names = F,
        col.names = T)
@@ -184,12 +199,9 @@ names(scenarios.label) = "scenario"
 users.scenarios = as.data.frame(users.scenarios)
 users.scenarios = cbind(users.scenarios, scenarios.label)
 
-barplot.scenarios = ggplot(users.scenarios, aes(x = scenario, y = total)) +
-                      geom_bar(stat="identity") + 
-                      theme_bw()
+barplot.scenarios = ggplot(users.scenarios, aes(x = scenario, y = total, fill = scenario)) +
+                      geom_bar(stat="identity")
 
-
-boxplot.entropy
 barplot.scenarios
 
 #############################################################################################
