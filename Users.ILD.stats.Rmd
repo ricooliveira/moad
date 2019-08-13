@@ -326,6 +326,8 @@ pblapply(users, generate.graphs.daily.scenarios)
 
 ```{r}
 
+users = data.train$`user-id` %>% unique()
+
 user.propensity = function(user, history){
   print(user)
   user.history = history[which(history$`user-id` == user),] %>% select(`artist-name`)

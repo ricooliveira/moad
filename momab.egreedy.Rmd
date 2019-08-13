@@ -1,5 +1,5 @@
 ---
-title: "MultiObjective Multi Armed Bandit - UCB1"
+title: "MultiObjective Multi Armed Bandit - e-greedy"
 output: html_notebook
 ---
 
@@ -140,7 +140,7 @@ list.ILD = function(list.elements){
 
 # Distance List History Metric (DLH)
 
-distance.function.genre = function(data, history){
+distance.function.genre = function(u, data, history){
   centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
   centroid$`user-id` = NULL
   distance = 0
@@ -150,7 +150,7 @@ distance.function.genre = function(data, history){
   return(distance/nrow(data))
 }
 
-distance.function.locality = function(data, history){
+distance.function.locality = function(u, data, history){
   rec <- as.vector(t(data))
   h <- as.vector(t(history))
   N = nrow(artist.data)
@@ -166,7 +166,7 @@ distance.function.locality = function(data, history){
   return(mean(r))
 }
 
-distance.function.contemporaneity = function(data, history){
+distance.function.contemporaneity = function(u, data, history){
 
   n = nrow(data)
   m = nrow(history)
@@ -203,8 +203,8 @@ distance.function.contemporaneity = function(data, history){
   return(sum.contemporaneity / (m * n))
 }
 
-DLH = function(data, history, distance.function){
-  return(distance.function(data, history))
+DLH = function(u, data, history, distance.function){
+  return(distance.function(u, data, history))
 }
 
 ```
@@ -266,7 +266,7 @@ users = data.train$userid %>% unique()
 # list.elements.index = rec.list
 # artist.data = ubcf.user.artistdata
 
-multi.objective = function(list.elements.index, artist.data, data.train.user, aspects.to.diversify){
+multi.objective = function(list.elements.index, artist.data, data.train.user, aspects.to.diversify, u){
    aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
    size = length(list.elements.index)
    list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
@@ -287,7 +287,7 @@ multi.objective = function(list.elements.index, artist.data, data.train.user, as
    sum.dlh = 0
    for(i in aspects.not.to.diversify){
      df.aspect = df[(aspects[[i]])]
-     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+     sum.dlh = sum.dlh + DLH(u, data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
    }
    y2 = (sum.dlh / length(aspects.not.to.diversify))
    
@@ -411,7 +411,7 @@ propensities = fread(paste0(address,"resultsmomab/user.propensities.txt"),
 
 # Load UBCF file
 UBCF1k = fread(paste0(address,"resultsmomab/sample1000.ubcf.nn100.top1000.txt"), 
-                          sep = ";",
+                          sep = ",",
                           header = FALSE)
 names(UBCF1k) = c("user", "artist")
 ```
@@ -474,7 +474,7 @@ user.mab = function(u, iterations, EPSILON){
   #a = Sys.time()
   for(i in 1:(NARTISTS / REC.SIZE)){
     rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify)
+    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
     mean.reward.diversity[rec.list] = reward[1]
     mean.reward.affinity[rec.list] = reward[2]
   }
@@ -509,10 +509,10 @@ user.mab = function(u, iterations, EPSILON){
     }
 
     # run multiobjective function to collect rewards
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify)
+    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomabgreedy/rewards.user", u, ".egreedy.txt"),
+           paste0(address, "resultsmomabgreedy/rewards.user", u, ".iter", iterations,".egreedy.txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
@@ -535,7 +535,7 @@ user.mab = function(u, iterations, EPSILON){
 # print(Sys.time() - a)
 
 a = Sys.time()
-pblapply(users, user.mab, 1000, EPSILON)
+lapply(users, user.mab, 100, EPSILON)
 print(Sys.time() - a)
 
 
