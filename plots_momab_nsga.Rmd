@@ -1,0 +1,103 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+if (!require("dplyr")) {
+  install.packages("dplyr", repos="http://cran.rstudio.com/") 
+}
+if (!require("data.table")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+if (!require("ggplot2")) {
+  install.packages("data.table", repos="http://cran.rstudio.com/") 
+}
+
+library(dplyr)
+library(data.table)
+library(ggplot2)
+
+```
+
+```{r}
+
+address <- "/local/Scripts/moad/"
+# address <- "/home/ricardo/DataScience/moad/"
+
+```
+
+```{r}
+
+############################### DATA LOAD ############################
+
+data.train <- fread(paste0(address,"data/LFM_train.txt"), 
+                    sep = "\t", 
+                    verbose = TRUE,
+                    header = TRUE)
+data.train = as.data.frame(data.train)
+names(data.train) = c("albumid", "artistid", "userid", "timestamp", "country", "age", "gender", "playcount", "regtimestamp", "artistname", "albumname")
+
+users = data.train$userid %>% unique()
+
+```
+
+```{r}
+
+#u = users[1]
+median.last.10 = function(u){
+  results = fread(paste0(address, "resultsmomabgreedy/rewards.user", u, ".iter100.egreedy.txt"), sep = ",")
+  results.div = results[91:100]$V11 %>% median()
+  results.aff = results[91:100]$V12 %>% median()
+  return (c(results.div, results.aff))
+}
+
+results.momab.greedy.100 = do.call(rbind, lapply(users, median.last.10))
+results.momab.greedy.100 = cbind(users, results.momab.greedy.100) %>% as.data.frame()
+names(results.momab.greedy.100) = c("user", "diversity", "affinity")
+results.momab.greedy.100$method = "momab 100"
+
+
+```
+
+```{r}
+
+#u = users[1]
+median.last.10 = function(u){
+  results = fread(paste0(address, "resultsmomabgreedy/rewards.user", u, ".egreedy.txt"), sep = ",")
+  results.div = results[991:1000]$V11 %>% median()
+  results.aff = results[991:1000]$V12 %>% median()
+  return (c(results.div, results.aff))
+}
+
+results.momab.greedy = do.call(rbind, lapply(users, median.last.10))
+results.momab.greedy = cbind(users, results.momab.greedy) %>% as.data.frame()
+names(results.momab.greedy) = c("user", "diversity", "affinity")
+results.momab.greedy$method = "momab 1000"
+
+
+```
+```{r}
+
+results.nsga = fread(paste0(address, "resultsnsga/objectives.nsga.propensities.txt"),
+                     sep = "\t")
+results.nsga$V1 = NULL
+names(results.nsga) = c("user", "diversity", "affinity")
+results.nsga$method = "nsga"
+
+```
+
+```{r}
+
+results.both = rbind(results.nsga, results.momab.greedy, results.momab.greedy.100)
+
+ggplot(results.both, aes(method, diversity)) +
+  geom_boxplot()
+
+ggplot(results.both, aes(method, affinity)) +
+  geom_boxplot()
+
+
+```
+
