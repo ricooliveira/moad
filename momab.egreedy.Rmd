@@ -35,8 +35,8 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-# address <- "/local/Scripts/moad/"
-address <- "/home/ricardo/DataScience/moad/"
+address <- "/local/Scripts/moad/"
+# address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -539,7 +539,11 @@ user.mab = function(u, iterations, EPSILON){
 }
 
 a = Sys.time()
+<<<<<<< HEAD
 user.mab(users[2], 1000, EPSILON)
+=======
+lapply(users, user.mab, 100, EPSILON)
+>>>>>>> 7329aea2b17ee580c4bd2a325d10368cf58c8125
 print(Sys.time() - a)
 
 # a = Sys.time()
