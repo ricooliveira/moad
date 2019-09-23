@@ -1,5 +1,5 @@
 ---
-title: "MultiObjective Multi Armed Bandit - e-greedy"
+title: "MultiObjective Multi Armed Bandit - Contextual Package"
 output: html_notebook
 ---
 
@@ -28,6 +28,7 @@ library(ggplot2)
 library(reshape)
 library(lsa)
 library(recommenderlab)
+library(contextual)
 
 ```
 
@@ -418,33 +419,83 @@ names(UBCF1k) = c("user", "artist")
 
 ```{r}
 
+# contextual test chunk
+
+horizon <- 100
+sims <- 100
+policy <- EpsilonGreedyPolicy$new(epsilon = 0.1)
+bandit <- BasicBernoulliBandit$new(weights = c(0.6, 0.1, 0.1))
+agent <- Agent$new(policy,bandit)
+history <- Simulator$new(agent, horizon, sims)$run()
+plot(history, type = "cumulative", regret = TRUE)
+
+x = policy$set_reward(1, NULL, NULL, list(0.8, NULL, NULL))
+
+```
+
+```{r}
+
+# OO test chunk 
+
+student <- function(n,a,g) {
+value <- list(name=n, age=a, GPA=g)
+attr(value, "class") <- "student"
+value
+}
+
+print.student <- function(obj) {
+cat(obj$name, "\n")
+cat(obj$age, "years old\n")
+cat("GPA:", obj$GPA, "\n")
+}
+
+print.InternationalStudent <- function(obj) {
+cat(obj$name, "is from", obj$country, "\n")
+}
+
+s <- list(name="John", age=21, GPA=3.5, country="France")
+
+class(s) <- c("InternationalStudent","student")
+
+# S4 class
+
+# define a class called student
+setClass("student",
+          slots=list(name="character", age="numeric", GPA="numeric")
+)
+# define class method for the show() generic function
+setMethod("show",
+          "student",
+          function(object) {
+            cat(object@name, "\n")
+            cat(object@age, "years old\n")
+            cat("GPA:", object@GPA, "\n")
+          }
+          )
+
+# inherit from student
+setClass("InternationalStudent",
+    slots=list(country="character"),
+    contains="student"
+)
+
+s <- new("InternationalStudent",name="John", age=21, GPA=3.5, country="France")
+
+```
+
+```{r}
+
 ########################################## MAB ##########################################
 
-# Multiobjective Ranked MAB UCB1
+# Multiobjective Ranked MAB
 # Ranked MAB implemented as seen in
 # Radlinski, F., Kleinberg, R., & Joachims, T. (2008, July). Learning diverse rankings with multi-armed bandits. In Proceedings of the 25th international conference on Machine learning (pp. 784-791). ACM.
-# UCB1 implemented as seen in
-# Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. Machine learning, 47(2-3), 235-256.
-
-# The initial pull on each arm will be done using affinity objective.
-# scalarization is mean between affinity and diversity.
-
-  # pull.each.arm = function(arm){
-  #   sum.dlh = 0
-  #   for(i in 1:3){
-  #     df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
-  #     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
-  #   }
-  #   return(sum.dlh / 3)
-  # }
+# MAB using contextual package with overriden bandits
 
 scalarize = function(obj1, obj2){
   # mean
   return((obj1 + obj2) / 2)
 }
-
-EPSILON = 0.4
-RANGE.MAX = 1000
 
 #test
 #u = 7687
@@ -452,9 +503,6 @@ RANGE.MAX = 1000
 #NARTISTS = 10
 user.mab = function(u, iterations, EPSILON){
   UBCF.user = UBCF1k %>% filter(user == u)
-  
-  # test - shrinking epsilon
-  quarter = iterations / 4
   
   # determine user propensity using history ILD
   
@@ -465,77 +513,54 @@ user.mab = function(u, iterations, EPSILON){
   artist.data.listenned = unique(data.train[which(data.train$userid == u),]$artistname)
   data.train.user = artist.data[artist.data$Artist %in% artist.data.listenned,]
   arms = artist.data[artist.data$Artist %in% UBCF.user$artist,]
-  
+
+  # here I have a user and her propensity  
   # Initialize MAB
-  
-  # changing this version
-  # user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
-  mean.reward.affinity = rep(1.0, NARTISTS)
-  mean.reward.diversity = rep(1.0, NARTISTS)
-  
-  # pull each 10 arm block once
-  #a = Sys.time()
-  for(i in 1:(NARTISTS / REC.SIZE)){
-    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
-    mean.reward.diversity[rec.list] = reward[1]
-    mean.reward.affinity[rec.list] = reward[2]
-  }
-  #print(Sys.time() - a)
-  
-  mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
-  mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
-  
-  ni = matrix(1, REC.SIZE, NARTISTS)
-  
-  # generate recommendation list
-  # test
-  # iter = 1
-  # a = Sys.time()
-  for(iter in 1:iterations) {
-    # iter=1
-    
-    # test - shrinking epsilon
-    if(iter %% quarter == 0){
-      EPSILON = EPSILON - 0.1
-    }
-  
-    rec.list = rep(0,REC.SIZE)
-    ucb.scalarized = scalarize(mean.reward.diversity, mean.reward.affinity)
-    for(i in 1:REC.SIZE){
-      drawn = runif(1, 0, RANGE.MAX)
-      if(drawn > EPSILON * RANGE.MAX){
-        rec.list[i] = which.max(ucb.scalarized[i,])
-      } else {
-        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
-      }
-      while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
-        #randomly select another item
-        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
-      }
-      ni[i, rec.list[i]] = ni[i, rec.list[i]] + 1
-    }
 
-    # run multiobjective function to collect rewards
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
-    df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
-    # fwrite(df,
-    #        paste0(address, "resultsmomabgreedy/all.shrinkingepsilon.rewards.user", u, ".iter", iterations,".egreedy.txt"),
-    #        col.names = FALSE, row.names = FALSE, append = TRUE)
-
-    # update mean rewards
-    
-    # test
-    # i = 1
-    for(i in 1:REC.SIZE){
-      mean.reward.diversity[i,rec.list[i]] = ((mean.reward.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[1]) / (ni[i,rec.list[i]])) 
-      mean.reward.affinity[i,rec.list[i]] = ((mean.reward.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]-1) + reward[2]) / (ni[i,rec.list[i]])) 
-    }
-    # fwrite(mean.reward.diversity %>% signif(6) %>% as.data.frame(),
-    #        paste0(address, "resultsmomab/rewards.user", u, ".egreedy.txt"),
-    #        col.names = FALSE, row.names = FALSE, append = TRUE)
+  simulations <- 1
+  horizon     <- 100 # to be adjusted
+  
+  bandits.list = list()
+  for(i in 1:REC.SIZE){
+      #bandits.list[[i]] <- ThompsonSamplingPolicy$new()
+      bandits.list[[i]] <- UCB1Policy$new()
   }
-  # print(Sys.time() - a)
+  
+  for(iter in horizon){
+      for(i in REC.SIZE){
+          x = bandits.list[[i]]$get_action(iter, NULL)
+      }
+  }
+  
+  bandit = BasicGaussianBandit$new(1,1)
+  context = bandit$get_context(1000)
+  
+  context = list()
+  context$k = 1000
+  context$d = 0
+  context$X = NULL
+  policy = UCB1Policy$new()
+  policy$get_action(1, context)
+  
+
+    # agents      <-
+  #   list(Agent$new(ThompsonSamplingPolicy$new(), bandit, "Thompson"),
+  #        Agent$new(UCB1Policy$new(), bandit, "UCB1"))
+  # 
+  # 
+  # simulation  <-
+  #   Simulator$new(
+  #     agents           = agents,
+  #     simulations      = simulations,
+  #     horizon          = horizon#,
+  #     #reindex          = TRUE
+  #   )
+  # 
+  # results  <- simulation$run()
+  # 
+  # plot(results, type = "cumulative", regret = FALSE,
+  #      rate = TRUE, legend_position = "topleft")
+  # 
 }
 
 a = Sys.time()
@@ -548,3 +573,43 @@ print(Sys.time() - a)
 
 
 ```
+
+```{r}
+# outro chunk de teste de OO
+
+meuObjeto <- "string"
+
+# Veja a estrutura do seu objeto:
+str(meuObjeto)
+
+#Agora adicione mais strutura: uma classe
+class(meuObjeto) <- 'minhaClasse'
+
+# Veja a estrutura do seu objeto:
+str(meuObjeto)
+
+# Exemplos de objetos S3 (summary)
+exClass_glm       <- glm(c(20:1) ~ c(1:20) )
+exClass_dataframe <- data.frame(1:20)
+str(exClass_glm) # a lot of structure
+class(exClass_glm) # ... and two classes
+
+# veja a diferenca: nao ha methodo para a clsse "minhaClasse", porque nao definimos nada
+summary(exClass_glm)
+summary(exClass_dataframe)
+summary(meuObjeto)
+
+# mas se voce define um metodo para sua classe....
+summary.minhaClasse <- function (x,y,...) {
+print('Hey, olha so !!')
+paste('minha string e:',meuObjeto)
+}
+summary(meuObjeto)
+
+# mas S3 e coracao de mae e aceita qualquer coisa, o que pode gerar erro em algum momento do codigo
+x <- 3
+summary(x)
+class(x) <- 'glm'
+summary(x)
+```
+
