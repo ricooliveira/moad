@@ -477,10 +477,11 @@ user.mab = function(u, iterations){
     for (bandit in 1:REC.SIZE) {
       # bandit=1
       # apply(c(1:NARTISTS), dbeta, quantiles, reward.affinity[bandit, arm] + 1, penalties.affinity[bandit, arm])
+      beta.d = dbeta(quantiles, reward.affinity[bandit, arm] + 1, penalties.affinity[bandit, arm])
       for(arm in 1:NARTISTS){
         # arm=1
         # beta_d = random.betavariate(rewards[i] + 1, penalties[i] + 1)
-        beta.d = dbeta(quantiles, reward.affinity[bandit, arm] + 1, penalties.affinity[bandit, arm])
+        
       }
     }
 

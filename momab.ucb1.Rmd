@@ -35,7 +35,7 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-address <- "/home/ricardo/DataScience/moad/"
+address <- "/local/Scripts/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -469,12 +469,12 @@ user.mab = function(u, niterations){
   
   # pull each 10 arm block once
   #a = Sys.time()
-  for(i in 1:(NARTISTS / REC.SIZE)){
-    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data)
-    mean.reward.diversity[rec.list] = reward[1]
-    mean.reward.affinity[rec.list] = reward[2]
-  }
+  # for(i in 1:(NARTISTS / REC.SIZE)){
+  #   rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+  #   reward = multi.objective(rec.list, artist.data)
+  #   mean.reward.diversity[rec.list] = reward[1]
+  #   mean.reward.affinity[rec.list] = reward[2]
+  # }
   #print(Sys.time() - a)
   
   mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
@@ -482,16 +482,57 @@ user.mab = function(u, niterations){
   
   ni = matrix(1, REC.SIZE, NARTISTS)
   
+  random <- function(actions) 
+  {
+    a <- runif(1, max = length(actions)) %>% trunc()
+    return(a)
+  }
+  
+  greedy_tie_breaker <- function(actions, rewards) 
+  {
+    successrates <- (0.5+rewards)/(1+actions)
+    a <- successrates %>% which.is.max() # which.is.max randomizes between ties
+    return(a)
+  }
+  
+  epsilon_greedy <- function(actions, rewards, epsilon = 0.1) 
+  {
+    r <- random(actions)
+    g <- greedy_tie_breaker(actions, rewards)
+    p <- runif(1)
+    a <- ifelse(p <= epsilon, r, g)
+    return(a)
+  }
+  
+  # UCB1 in https://rpubs.com/OttoP/478713
+  #   ucb1 <- function(actions, rewards, episode, n_episodes) 
+  #   {
+  #     successrates <- (0.5+rewards)/(1+actions)
+  #     confbound <- t(apply(actions, 1, function(arow) { return (sqrt(2*log(episode+1)/(arow+1e-10))) }))
+  #   
+  #     a <- apply(successrates+confbound, 1, which.max)
+  #     return(a)
+  #   }
+  
+  # Thompson sampling in https://rpubs.com/OttoP/478713
+  thompson_sampling <- function(actions, rewards) 
+  {
+      # get the probabilities one by one via the beta distrib with arguments (pos+1, neg+1), then return the bandit with the max prob
+      probs <- sapply(seq(length(actions)), function(j) {return(rbeta(1, rewards[j]+1, (actions[j]-rewards[j])+1))})
+      return(which.max(probs))
+  }  
+  
   # generate recommendation list
   # test
   # iter = 1
   # a = Sys.time()
   for(iter in 1:niterations) {
     # i=1
-    ucb.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity) + sqrt((2 * log(iter)) / ni)
+    reward.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity)
+    
     rec.list = rep(0,REC.SIZE)
     for(i in 1:REC.SIZE){
-      rec.list[i] = which.max(ucb.scalarized[i,])
+      rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
@@ -504,7 +545,7 @@ user.mab = function(u, niterations){
     reward = multi.objective(rec.list, artist.data)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomab/rewards.user", u, ".txt"),
+           paste0(address, "resultsmomabts/rewards.user", u, ".txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
@@ -520,7 +561,7 @@ user.mab = function(u, niterations){
 }
 
 a = Sys.time()
-user.mab(u, 10000)
+user.mab(u, 1000)
 print(Sys.time() - a)
 
 ```
