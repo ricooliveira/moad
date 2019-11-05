@@ -480,6 +480,8 @@ user.mab = function(u, niterations){
   
   mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
   mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
+  reward.affinity = mean.reward.affinity
+  reward.diversity = mean.reward.diversity
   
   ni = matrix(1, REC.SIZE, NARTISTS)
   
@@ -529,7 +531,7 @@ user.mab = function(u, niterations){
   # a = Sys.time()
   for(iter in 1:niterations) {
     # i=1
-    reward.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity)
+    reward.scalarized = scalarize(reward.affinity, reward.diversity)
     rec.list = rep(0,REC.SIZE)
     
     for(i in 1:REC.SIZE){
@@ -556,6 +558,10 @@ user.mab = function(u, niterations){
     for(i in 1:REC.SIZE){
       mean.reward.diversity[i,rec.list[i]] = ((mean.reward.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[1]) / (ni[i,rec.list[i]] + 1)) 
       mean.reward.affinity[i,rec.list[i]] = ((mean.reward.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[2]) / (ni[i,rec.list[i]] + 1)) 
+      if(reward.scalarized[i, rec.list[i]] < scalarize(reward[1], reward[2])){  # problem
+        reward.diversity[i, rec.list[i]] = reward[1] 
+        reward.affinity[i, rec.list[i]] = reward[2] 
+      }
     }
   }
   # print(Sys.time() - a)
