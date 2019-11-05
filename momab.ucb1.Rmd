@@ -139,7 +139,7 @@ list.ILD = function(list.elements){
 
 # Distance List History Metric (DLH)
 
-distance.function.genre = function(data, history){
+distance.function.genre = function(u, data, history){
   centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
   centroid$`user-id` = NULL
   distance = 0
@@ -149,7 +149,7 @@ distance.function.genre = function(data, history){
   return(distance/nrow(data))
 }
 
-distance.function.locality = function(data, history){
+distance.function.locality = function(u, data, history){
   rec <- as.vector(t(data))
   h <- as.vector(t(history))
   N = nrow(artist.data)
@@ -165,7 +165,7 @@ distance.function.locality = function(data, history){
   return(mean(r))
 }
 
-distance.function.contemporaneity = function(data, history){
+distance.function.contemporaneity = function(u, data, history){
 
   n = nrow(data)
   m = nrow(history)
@@ -202,8 +202,8 @@ distance.function.contemporaneity = function(data, history){
   return(sum.contemporaneity / (m * n))
 }
 
-DLH = function(data, history, distance.function){
-  return(distance.function(data, history))
+DLH = function(u, data, history, distance.function){
+  return(distance.function(u, data, history))
 }
 
 ```
@@ -265,7 +265,8 @@ users = data.train$userid %>% unique()
 # list.elements.index = rec.list
 # artist.data = ubcf.user.artistdata
 
-multi.objective = function(list.elements.index, artist.data){
+multi.objective = function(list.elements.index, artist.data, data.train.user, aspects.to.diversify, u){
+   aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
    size = length(list.elements.index)
    list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
    names(list.elements) = "artist"
@@ -285,7 +286,7 @@ multi.objective = function(list.elements.index, artist.data){
    sum.dlh = 0
    for(i in aspects.not.to.diversify){
      df.aspect = df[(aspects[[i]])]
-     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+     sum.dlh = sum.dlh + DLH(u, data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
    }
    y2 = (sum.dlh / length(aspects.not.to.diversify))
    
@@ -529,8 +530,8 @@ user.mab = function(u, niterations){
   for(iter in 1:niterations) {
     # i=1
     reward.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity)
-    
     rec.list = rep(0,REC.SIZE)
+    
     for(i in 1:REC.SIZE){
       rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
@@ -542,10 +543,10 @@ user.mab = function(u, niterations){
     
     
     # run multiobjective function to collect rewards
-    reward = multi.objective(rec.list, artist.data)
+    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomabts/rewards.user", u, ".txt"),
+           paste0(address, "resultsmomabts/rewards.user", u, ".iter", niterations, ".egreedy.txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
@@ -561,7 +562,7 @@ user.mab = function(u, niterations){
 }
 
 a = Sys.time()
-user.mab(u, 1000)
+user.mab(users[2], 1000)
 print(Sys.time() - a)
 
 ```

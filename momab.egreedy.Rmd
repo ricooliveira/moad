@@ -443,7 +443,7 @@ scalarize = function(obj1, obj2){
   return((obj1 + obj2) / 2)
 }
 
-EPSILON = 0.4
+EPSILON = 0.1
 RANGE.MAX = 1000
 
 #test
@@ -488,27 +488,51 @@ user.mab = function(u, iterations, EPSILON){
   
   ni = matrix(1, REC.SIZE, NARTISTS)
   
+  random <- function(actions) 
+  {
+    a <- runif(1, max = length(actions)) %>% trunc()
+    return(a)
+  }
+  
+  greedy_tie_breaker <- function(actions, rewards) 
+  {
+    successrates <- (0.5+rewards)/(1+actions)
+    a <- successrates %>% which.is.max() # which.is.max randomizes between ties
+    return(a)
+  }
+  
+  epsilon_greedy <- function(actions, rewards, epsilon = 0.1) 
+  {
+    r <- random(actions)
+    g <- greedy_tie_breaker(actions, rewards)
+    p <- runif(1)
+    a <- ifelse(p <= epsilon, r, g)
+    return(a)
+  }
+  
   # generate recommendation list
   # test
   # iter = 1
   # a = Sys.time()
   for(iter in 1:iterations) {
-    # iter=1
-    
+
     # test - shrinking epsilon
-    if(iter %% quarter == 0){
-      EPSILON = EPSILON - 0.1
-    }
+    # if(iter %% quarter == 0){
+    #   EPSILON = EPSILON - 0.1
+    # }
   
     rec.list = rep(0,REC.SIZE)
-    ucb.scalarized = scalarize(mean.reward.diversity, mean.reward.affinity)
+    reward.scalarized = scalarize(mean.reward.diversity, mean.reward.affinity)
+    # test
+    # i=1
     for(i in 1:REC.SIZE){
       drawn = runif(1, 0, RANGE.MAX)
       if(drawn > EPSILON * RANGE.MAX){
-        rec.list[i] = which.max(ucb.scalarized[i,])
+        rec.list[i] = which.max(reward.scalarized[i,])
       } else {
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
       }
+      #rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
@@ -519,9 +543,9 @@ user.mab = function(u, iterations, EPSILON){
     # run multiobjective function to collect rewards
     reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
-    # fwrite(df,
-    #        paste0(address, "resultsmomabgreedy/all.shrinkingepsilon.rewards.user", u, ".iter", iterations,".egreedy.txt"),
-    #        col.names = FALSE, row.names = FALSE, append = TRUE)
+    fwrite(df,
+           paste0(address, "resultsmomabts/rewards.user", u, ".iter", iterations,".egreedy2.txt"),
+           col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
     
@@ -539,11 +563,8 @@ user.mab = function(u, iterations, EPSILON){
 }
 
 a = Sys.time()
-<<<<<<< HEAD
-user.mab(users[2], 1000, EPSILON)
-=======
-lapply(users, user.mab, 100, EPSILON)
->>>>>>> 7329aea2b17ee580c4bd2a325d10368cf58c8125
+user.mab(users[1], 1000, EPSILON)
+#lapply(users, user.mab, 100, EPSILON)
 print(Sys.time() - a)
 
 # a = Sys.time()
