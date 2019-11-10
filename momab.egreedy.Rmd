@@ -28,6 +28,7 @@ library(ggplot2)
 library(reshape)
 library(lsa)
 library(recommenderlab)
+library(nnet)
 
 ```
 
@@ -35,8 +36,8 @@ library(recommenderlab)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-address <- "/local/Scripts/moad/"
-# address <- "/home/ricardo/DataScience/moad/"
+# address <- "/local/Scripts/moad/"
+address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
 NITER = 500
 
@@ -475,18 +476,18 @@ user.mab = function(u, iterations, EPSILON){
   
   # pull each 10 arm block once
   #a = Sys.time()
-  for(i in 1:(NARTISTS / REC.SIZE)){
-    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
-    mean.reward.diversity[rec.list] = reward[1]
-    mean.reward.affinity[rec.list] = reward[2]
-  }
+  # for(i in 1:(NARTISTS / REC.SIZE)){
+  #   rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+  #   reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
+  #   mean.reward.diversity[rec.list] = reward[1]
+  #   mean.reward.affinity[rec.list] = reward[2]
+  # }
   #print(Sys.time() - a)
   
   mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
   mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
   
-  ni = matrix(1, REC.SIZE, NARTISTS)
+  ni = matrix(0, REC.SIZE, NARTISTS)
   
   random <- function(actions) 
   {
@@ -526,13 +527,13 @@ user.mab = function(u, iterations, EPSILON){
     # test
     # i=1
     for(i in 1:REC.SIZE){
-      drawn = runif(1, 0, RANGE.MAX)
-      if(drawn > EPSILON * RANGE.MAX){
-        rec.list[i] = which.max(reward.scalarized[i,])
-      } else {
-        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
-      }
-      #rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
+      # drawn = runif(1, 0, RANGE.MAX)
+      # if(drawn > EPSILON * RANGE.MAX){
+      #   rec.list[i] = which.max(reward.scalarized[i,])
+      # } else {
+      #   rec.list[i] = runif(1, 1, NARTISTS) %>% round()
+      # }
+      rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()

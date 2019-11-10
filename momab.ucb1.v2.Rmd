@@ -28,7 +28,6 @@ library(ggplot2)
 library(reshape)
 library(lsa)
 library(recommenderlab)
-library(nnet)
 
 ```
 
@@ -36,7 +35,6 @@ library(nnet)
 
 REC.SIZE = 10
 TEST.SIZE = 20
-#address <- "/local/Scripts/moad/"
 address <- "/home/ricardo/DataScience/moad/"
 NARTISTS = 1000
 NITER = 500
@@ -141,7 +139,7 @@ list.ILD = function(list.elements){
 
 # Distance List History Metric (DLH)
 
-distance.function.genre = function(u, data, history){
+distance.function.genre = function(data, history){
   centroid = genre.centroids[which(genre.centroids$`user-id` == u),]
   centroid$`user-id` = NULL
   distance = 0
@@ -151,7 +149,7 @@ distance.function.genre = function(u, data, history){
   return(distance/nrow(data))
 }
 
-distance.function.locality = function(u, data, history){
+distance.function.locality = function(data, history){
   rec <- as.vector(t(data))
   h <- as.vector(t(history))
   N = nrow(artist.data)
@@ -167,7 +165,7 @@ distance.function.locality = function(u, data, history){
   return(mean(r))
 }
 
-distance.function.contemporaneity = function(u, data, history){
+distance.function.contemporaneity = function(data, history){
 
   n = nrow(data)
   m = nrow(history)
@@ -204,8 +202,8 @@ distance.function.contemporaneity = function(u, data, history){
   return(sum.contemporaneity / (m * n))
 }
 
-DLH = function(u, data, history, distance.function){
-  return(distance.function(u, data, history))
+DLH = function(data, history, distance.function){
+  return(distance.function(data, history))
 }
 
 ```
@@ -267,8 +265,7 @@ users = data.train$userid %>% unique()
 # list.elements.index = rec.list
 # artist.data = ubcf.user.artistdata
 
-multi.objective = function(list.elements.index, artist.data, data.train.user, aspects.to.diversify, u){
-   aspects.not.to.diversify = setdiff(aspects.all,aspects.to.diversify)
+multi.objective = function(list.elements.index, artist.data){
    size = length(list.elements.index)
    list.elements = as.data.frame(artist.data[list.elements.index,"Artist"])
    names(list.elements) = "artist"
@@ -288,7 +285,7 @@ multi.objective = function(list.elements.index, artist.data, data.train.user, as
    sum.dlh = 0
    for(i in aspects.not.to.diversify){
      df.aspect = df[(aspects[[i]])]
-     sum.dlh = sum.dlh + DLH(u, data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
    }
    y2 = (sum.dlh / length(aspects.not.to.diversify))
    
@@ -427,18 +424,28 @@ names(UBCF1k) = c("user", "artist")
 # UCB1 implemented as seen in
 # Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. Machine learning, 47(2-3), 235-256.
 
+# The initial pull on each arm will be done using affinity objective.
+# scalarization is mean between affinity and diversity.
+
+  # pull.each.arm = function(arm){
+  #   sum.dlh = 0
+  #   for(i in 1:3){
+  #     df.aspect = arms[arm, (aspects[[i]])] %>% as.data.frame()
+  #     sum.dlh = sum.dlh + DLH(data = df.aspect, history = data.train.user[(aspects[[i]])], distance.function = distance.functions[[i]])
+  #   }
+  #   return(sum.dlh / 3)
+  # }
+
 scalarize = function(obj1, obj2){
   # mean
   return((obj1 + obj2) / 2)
 }
 
-EPSILON = 0.1
-RANGE.MAX = 1000
 
 #test
 #u = 7687
 #REC.SIZE = 5
-#NARTISTS = 10
+#NARTISTS = 100
 #niterations = 500
 user.mab = function(u, niterations){
   UBCF.user = UBCF1k %>% filter(user == u)
@@ -457,89 +464,60 @@ user.mab = function(u, niterations){
   
   # changing this version
   # user.arms.affinity = do.call(c, lapply(c(1:NARTISTS), pull.each.arm))
-  
-  # mean.reward.affinity = rep(1.0, NARTISTS)
-  # mean.reward.diversity = rep(1.0, NARTISTS)
-  mean.reward.affinity = rep(0.0, NARTISTS)
-  mean.reward.diversity = rep(0.0, NARTISTS)
+  mean.reward.affinity = rep(1.0, NARTISTS)
+  mean.reward.diversity = rep(1.0, NARTISTS)
   
   # pull each 10 arm block once
   #a = Sys.time()
-  # for(i in 1:(NARTISTS / REC.SIZE)){
-  #   rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
-  #   reward = multi.objective(rec.list, artist.data)
-  #   mean.reward.diversity[rec.list] = reward[1]
-  #   mean.reward.affinity[rec.list] = reward[2]
-  # }
+  for(i in 1:(NARTISTS / REC.SIZE)){
+    rec.list = c(1:REC.SIZE) + (i-1) * REC.SIZE
+    reward = multi.objective(rec.list, artist.data)
+    mean.reward.diversity[rec.list] = reward[1]
+    mean.reward.affinity[rec.list] = reward[2]
+  }
   #print(Sys.time() - a)
   
   mean.reward.affinity = rep(1, REC.SIZE) %*% t.default(mean.reward.affinity)
   mean.reward.diversity = rep(1, REC.SIZE) %*% t.default(mean.reward.diversity)
-  # reward.affinity = mean.reward.affinity
-  # reward.diversity = mean.reward.diversity
-  reward.scalarized = mean.reward.diversity
   
-  ni = matrix(0, REC.SIZE, NARTISTS)
-  
-  random <- function(actions) 
-  {
-    a <- runif(1, max = length(actions)) %>% trunc()
-    return(a)
-  }
-  
-  greedy_tie_breaker <- function(actions, rewards) 
-  {
-    successrates <- (0.5+rewards)/(1+actions)
-    a <- successrates %>% which.is.max() # which.is.max randomizes between ties
-    return(a)
-  }
-  
-  epsilon_greedy <- function(actions, rewards, epsilon = 0.1) 
-  {
-    r <- random(actions)
-    g <- greedy_tie_breaker(actions, rewards)
-    p <- runif(1)
-    a <- ifelse(p <= epsilon, r, g)
-    return(a)
-  }
-  
-  # UCB1 in https://rpubs.com/OttoP/478713
-  ucb1 <- function(actions, rewards, episode, n_episodes)
-  {
-    successrates <- (0.5+rewards)/(1+actions)
-    confbound <- t(apply(actions, 1, function(arow) { return (sqrt(2*log(episode+1)/(arow+1e-10))) }))
+  ni = matrix(1, REC.SIZE, NARTISTS)
 
-    a <- apply(successrates+confbound, 1, which.max)
-    return(a)
+  # UCB1 as seen in https://rpubs.com/OttoP/478713  
+  ucb1 <- function(actions, rewards, episode)
+  {
+      successrates <- (0.5+rewards)/(1+actions)
+      confbound <- as.data.frame(lapply(actions, function(arow) { return (sqrt(2*log(episode+1)/(arow+1e-10))) }))
+  
+      a <- apply(successrates+confbound, 1, which.max)
+      return(a)
   }
 
-  # Thompson sampling in https://rpubs.com/OttoP/478713
-  thompson_sampling <- function(actions, rewards) 
+  # Thompson Sampling as seen in https://rpubs.com/OttoP/478713  
+  thompson_sampling <- function(actions, rewards, episode, n_episodes) 
   {
-      # get the probabilities one by one via the beta distrib with arguments (pos+1, neg+1), then return the bandit with the max prob
-      probs <- sapply(seq(length(actions)), function(j) {return(rbeta(1, rewards[j]+1, (actions[j]-rewards[j])+1))})
+    ts <- function(a, r)
+    {
+      # get the probabilities one by one via the beta distrib with arguments (pos+1, neg+1), then return the bandit         with the max prob
+      probs <- sapply(seq(length(a)), function(j) {return(rbeta(1, r[j]+1, a[j]-r[j]+1))})
       return(which.max(probs))
-  }  
-  
+    }
+    # iterate over all experiments
+    a <- sapply(seq(nrow(actions)), function(i) {return(ts(actions[i,], rewards[i,]))})
+    return(a)
+  }
+
   # generate recommendation list
   # test
   # iter = 1
   # a = Sys.time()
   for(iter in 1:niterations) {
-    reward.scalarized = scalarize(mean.reward.affinity, mean.reward.diversity)
-    rec.list = rep(0,REC.SIZE)
-    
     # i=1
+    rec.list = rep(0,REC.SIZE)
+    scalarized.rewards = scalarize(mean.reward.affinity, mean.reward.diversity)
     for(i in 1:REC.SIZE){
-      #rec.list[i] = epsilon_greedy(ni[i,], reward.scalarized[i,])
       
-      drawn = runif(1, 0, RANGE.MAX)
-      if(drawn > EPSILON * RANGE.MAX){
-        rec.list[i] = which.max(reward.scalarized[i,])
-      } else {
-        rec.list[i] = runif(1, 1, NARTISTS) %>% round()
-      }
-      
+      rec.list[i] = thompson_sampling(ni[i,], scalarized.rewards[i], iter)
+      #rewards[, rec.list[i]] = 0
       while(i != 1 & rec.list[i] %in% rec.list[1:(i-1)]){
         #randomly select another item
         rec.list[i] = runif(1, 1, NARTISTS) %>% round()
@@ -549,32 +527,26 @@ user.mab = function(u, niterations){
     
     
     # run multiobjective function to collect rewards
-    reward = multi.objective(rec.list, artist.data, data.train.user, aspects.to.diversify, u)
+    reward = multi.objective(rec.list, artist.data)
     df = c(rec.list, reward) %>% as.data.frame() %>% t() %>% as.data.frame()
     fwrite(df,
-           paste0(address, "resultsmomabts/rewards.user", u, ".iter", niterations, ".egreedy3.txt"),
+           paste0(address, "resultsmomabucb1/rewards.user", u, ".txt"),
            col.names = FALSE, row.names = FALSE, append = TRUE)
 
     # update mean rewards
-  # rw = scalarize(reward[1], reward[2])
+    
     # test
     # i = 1
     for(i in 1:REC.SIZE){
       mean.reward.diversity[i,rec.list[i]] = ((mean.reward.diversity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[1]) / (ni[i,rec.list[i]] + 1)) 
       mean.reward.affinity[i,rec.list[i]] = ((mean.reward.affinity[i,rec.list[i]] * (ni[i,rec.list[i]]) + reward[2]) / (ni[i,rec.list[i]] + 1)) 
-      
-      # if(reward.scalarized[i, rec.list[i]] < rw){  
-      #   #reward.diversity[i, rec.list[i]] = reward[1] 
-      #   #reward.affinity[i, rec.list[i]] = reward[2] 
-      #   reward.scalarized[i, rec.list[i]] = rw
-      # }
     }
   }
   # print(Sys.time() - a)
 }
 
 a = Sys.time()
-user.mab(users[1], 1000)
+user.mab(u, 1000)
 print(Sys.time() - a)
 
 ```
